@@ -10,18 +10,20 @@ use core::ops::{
 // ============================================================
 
 impl U256 {
+    #[must_use]
     pub fn overflowing_add(self, rhs: Self) -> (Self, bool) {
         let mut limbs = [0u64; 4];
         let mut carry = false;
         for (i, limb) in limbs.iter_mut().enumerate() {
             let (sum, c1) = self.0[i].overflowing_add(rhs.0[i]);
-            let (sum, c2) = sum.overflowing_add(carry as u64);
+            let (sum, c2) = sum.overflowing_add(u64::from(carry));
             *limb = sum;
             carry = c1 || c2;
         }
-        (U256(limbs), carry)
+        (Self(limbs), carry)
     }
 
+    #[must_use]
     pub fn wrapping_add(self, rhs: Self) -> Self {
         self.overflowing_add(rhs).0
     }
@@ -55,18 +57,20 @@ impl AddAssign for U256 {
 // ============================================================
 
 impl U256 {
+    #[must_use]
     pub fn overflowing_sub(self, rhs: Self) -> (Self, bool) {
         let mut limbs = [0u64; 4];
         let mut borrow = false;
         for (i, limb) in limbs.iter_mut().enumerate() {
             let (diff, b1) = self.0[i].overflowing_sub(rhs.0[i]);
-            let (diff, b2) = diff.overflowing_sub(borrow as u64);
+            let (diff, b2) = diff.overflowing_sub(u64::from(borrow));
             *limb = diff;
             borrow = b1 || b2;
         }
-        (U256(limbs), borrow)
+        (Self(limbs), borrow)
     }
 
+    #[must_use]
     pub fn wrapping_sub(self, rhs: Self) -> Self {
         self.overflowing_sub(rhs).0
     }
@@ -100,35 +104,39 @@ impl SubAssign for U256 {
 // ============================================================
 
 impl U256 {
+    #[must_use]
     pub fn mul_full(self, rhs: Self) -> U512 {
         let mut res = [0u64; 8];
         for i in 0..4 {
             let mut carry: u128 = 0;
             for j in 0..4 {
                 let k = i + j;
-                let product = (self.0[i] as u128) * (rhs.0[j] as u128);
-                let sum = product + (res[k] as u128) + carry;
+                let product = u128::from(self.0[i]) * u128::from(rhs.0[j]);
+                let sum = product + u128::from(res[k]) + carry;
                 res[k] = sum as u64;
                 carry = sum >> 64;
             }
             let mut idx = i + 4;
-            while carry != 0 {
-                let sum = (res[idx] as u128) + carry;
+            while carry != 0 && idx < 8 {
+                let sum = u128::from(res[idx]) + carry;
                 res[idx] = sum as u64;
                 carry = sum >> 64;
                 idx += 1;
-                if idx >= 8 {
-                    break;
-                }
             }
+            debug_assert!(
+                carry == 0,
+                "mul_full: carry overflowed past 512 bits"
+            );
         }
         U512(res)
     }
 
+    #[must_use]
     pub fn wrapping_mul(self, rhs: Self) -> Self {
         self.mul_full(rhs).low_u256()
     }
 
+    #[must_use]
     pub fn overflowing_mul(self, rhs: Self) -> (Self, bool) {
         let full = self.mul_full(rhs);
         (full.low_u256(), !full.high_u256().is_zero())
@@ -175,19 +183,14 @@ impl MulAssign for U256 {
 impl Not for U256 {
     type Output = Self;
     fn not(self) -> Self {
-        U256([
-            !self.0[0],
-            !self.0[1],
-            !self.0[2],
-            !self.0[3],
-        ])
+        Self([!self.0[0], !self.0[1], !self.0[2], !self.0[3]])
     }
 }
 
 impl BitAnd for U256 {
     type Output = Self;
     fn bitand(self, rhs: Self) -> Self {
-        U256([
+        Self([
             self.0[0] & rhs.0[0],
             self.0[1] & rhs.0[1],
             self.0[2] & rhs.0[2],
@@ -205,7 +208,7 @@ impl BitAndAssign for U256 {
 impl BitOr for U256 {
     type Output = Self;
     fn bitor(self, rhs: Self) -> Self {
-        U256([
+        Self([
             self.0[0] | rhs.0[0],
             self.0[1] | rhs.0[1],
             self.0[2] | rhs.0[2],
@@ -223,7 +226,7 @@ impl BitOrAssign for U256 {
 impl BitXor for U256 {
     type Output = Self;
     fn bitxor(self, rhs: Self) -> Self {
-        U256([
+        Self([
             self.0[0] ^ rhs.0[0],
             self.0[1] ^ rhs.0[1],
             self.0[2] ^ rhs.0[2],
@@ -243,9 +246,10 @@ impl BitXorAssign for U256 {
 // ============================================================
 
 impl U256 {
+    #[must_use]
     pub fn wrapping_shl(self, shift: u32) -> Self {
         if shift >= 256 {
-            return U256::zero();
+            return Self::zero();
         }
         let limb_off = (shift / 64) as usize;
         let bit_shift = shift % 64;
@@ -253,7 +257,7 @@ impl U256 {
         if bit_shift == 0 {
             let mut limbs = [0u64; 4];
             limbs[limb_off..4].copy_from_slice(&self.0[..4 - limb_off]);
-            return U256(limbs);
+            return Self(limbs);
         }
 
         let inv = 64 - bit_shift;
@@ -267,12 +271,13 @@ impl U256 {
             };
             *limb = lo | hi;
         }
-        U256(limbs)
+        Self(limbs)
     }
 
+    #[must_use]
     pub fn wrapping_shr(self, shift: u32) -> Self {
         if shift >= 256 {
-            return U256::zero();
+            return Self::zero();
         }
         let limb_off = (shift / 64) as usize;
         let bit_shift = shift % 64;
@@ -280,7 +285,7 @@ impl U256 {
         if bit_shift == 0 {
             let mut limbs = [0u64; 4];
             limbs[..4 - limb_off].copy_from_slice(&self.0[limb_off..4]);
-            return U256(limbs);
+            return Self(limbs);
         }
 
         let inv = 64 - bit_shift;
@@ -290,7 +295,7 @@ impl U256 {
             *limb = (self.0[i + limb_off] >> bit_shift) | (self.0[i + limb_off + 1] << inv);
         }
         limbs[hi_idx] = self.0[hi_idx + limb_off] >> bit_shift;
-        U256(limbs)
+        Self(limbs)
     }
 }
 
@@ -326,16 +331,17 @@ impl Shr<u32> for U256 {
 // ============================================================
 
 impl U256 {
+    #[must_use]
     pub fn div_rem(self, rhs: Self) -> (Self, Self) {
         if rhs.is_zero() {
-            return (U256::zero(), U256::zero());
+            return (Self::zero(), Self::zero());
         }
 
         let n = self.significant_limbs();
         let m = rhs.significant_limbs();
 
         if n < m {
-            return (U256::zero(), self);
+            return (Self::zero(), self);
         }
 
         if m == 1 {
@@ -345,18 +351,31 @@ impl U256 {
         Self::div_rem_knuth(self, rhs, n, m)
     }
 
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_lossless,
+        clippy::many_single_char_names
+    )]
     fn div_rem_1(dividend: &[u64; 4], n: usize, divisor: u64) -> (Self, Self) {
+        debug_assert!(divisor != 0, "div_rem_1 called with zero divisor");
         let mut q = [0u64; 4];
         let mut rem: u64 = 0;
         for i in (0..n).rev() {
-            let wide = ((rem as u128) << 64) | (dividend[i] as u128);
-            q[i] = (wide / divisor as u128) as u64;
-            rem = (wide % divisor as u128) as u64;
+            let wide = (u128::from(rem) << 64) | u128::from(dividend[i]);
+            q[i] = (wide / u128::from(divisor)) as u64;
+            rem = (wide % u128::from(divisor)) as u64;
         }
-        (U256(q), U256::from_u64(rem))
+        (Self(q), Self::from_u64(rem))
     }
 
-    #[allow(clippy::many_single_char_names)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_lossless,
+        clippy::many_single_char_names,
+        clippy::bool_to_int_with_if,
+        clippy::useless_let_if_seq,
+        clippy::explicit_iter_loop
+    )]
     fn div_rem_knuth(a: Self, b: Self, n: usize, m: usize) -> (Self, Self) {
         debug_assert!(n >= m && m >= 2);
 
@@ -379,7 +398,7 @@ impl U256 {
             }
             // Shift dividend u (5 limbs) left.
             let mut carry: u64 = 0;
-            for ui in u.iter_mut() {
+            for ui in &mut u {
                 let hi = *ui >> inv;
                 *ui = (*ui << shift) | carry;
                 carry = hi;
@@ -394,26 +413,24 @@ impl U256 {
         // D2–D7 — Main loop over quotient digits.
         for j in (0..=n - m).rev() {
             // D3 — Estimate q̂.
-            let u_jn = u[j + m] as u128;
-            let u_jn1 = u[j + m - 1] as u128;
-            let vn1 = v_n1 as u128;
+            let u_jn = u128::from(u[j + m]);
+            let u_jn1 = u128::from(u[j + m - 1]);
+            let vn1 = u128::from(v_n1);
 
-            let mut q_hat: u64;
-            let mut r_hat: u128;
-
-            if u_jn == vn1 {
-                q_hat = u64::MAX;
-                r_hat = u_jn1 + vn1;
+            let (mut q_hat, mut r_hat) = if u_jn == vn1 {
+                (u64::MAX, u_jn1 + vn1)
             } else {
                 let dividend = (u_jn << 64) | u_jn1;
-                q_hat = (dividend / vn1) as u64;
-                r_hat = dividend - (q_hat as u128) * vn1;
-            }
+                (
+                    (dividend / vn1) as u64,
+                    dividend - u128::from((dividend / vn1) as u64) * vn1,
+                )
+            };
 
             // D3 refinement — ensure q̂ * v_{m-2} ≤ r̂·b + u_{j+m-2}.
             loop {
-                let lhs = (q_hat as u128) * (v_n2 as u128);
-                let rhs = (r_hat << 64) | (u[j + m - 2] as u128);
+                let lhs = u128::from(q_hat) * u128::from(v_n2);
+                let rhs = (r_hat << 64) | u128::from(u[j + m - 2]);
                 if lhs <= rhs {
                     break;
                 }
@@ -429,28 +446,30 @@ impl U256 {
             let mut borrow: u64 = 0;
 
             for i in 0..m {
-                let product = (q_hat as u128) * (v[i] as u128) + (k as u128);
+                let product =
+                    u128::from(q_hat) * u128::from(v[i]) + u128::from(k);
                 let lo = product as u64;
                 k = (product >> 64) as u64;
 
                 let (diff, b1) = u[j + i].overflowing_sub(lo);
                 let (diff, b2) = diff.overflowing_sub(borrow);
                 u[j + i] = diff;
-                borrow = if b1 || b2 { 1 } else { 0 };
+                borrow = u64::from(b1 || b2);
             }
 
             // Subtract final carry k from u_{j+m}.
             let (diff, b1) = u[j + m].overflowing_sub(k);
             let (diff, b2) = diff.overflowing_sub(borrow);
             u[j + m] = diff;
-            borrow = if b1 || b2 { 1 } else { 0 };
+            borrow = u64::from(b1 || b2);
 
             // D5–D6 — Correction: if negative, add v back and decrement q̂.
             if borrow != 0 {
                 q_hat -= 1;
                 let mut add_carry: u64 = 0;
                 for i in 0..m {
-                    let sum = (u[j + i] as u128) + (v[i] as u128) + (add_carry as u128);
+                    let sum =
+                        u128::from(u[j + i]) + u128::from(v[i]) + u128::from(add_carry);
                     u[j + i] = sum as u64;
                     add_carry = (sum >> 64) as u64;
                 }
@@ -469,12 +488,12 @@ impl U256 {
                 r[i] = (u[i] >> shift) | (u[i + 1] << inv);
             }
             r[3] = (u[3] >> shift) | (u[4] << inv);
-            U256(r)
+            Self(r)
         } else {
-            U256([u[0], u[1], u[2], u[3]])
+            Self([u[0], u[1], u[2], u[3]])
         };
 
-        (U256(q), rem)
+        (Self(q), rem)
     }
 }
 
@@ -497,9 +516,10 @@ impl Rem for U256 {
 // ============================================================
 
 impl U256 {
+    #[must_use]
     pub fn exp(self, exponent: Self) -> Self {
         if exponent.is_zero() {
-            return U256::one();
+            return Self::one();
         }
         if self.is_zero() || self.is_one() {
             return self;
@@ -507,7 +527,7 @@ impl U256 {
 
         let mut base = self;
         let mut exp = exponent;
-        let mut result = U256::one();
+        let mut result = Self::one();
 
         while !exp.is_zero() {
             if exp.0[0] & 1 == 1 {
@@ -529,15 +549,15 @@ impl U256 {
     #[must_use]
     pub fn sdiv(self, rhs: Self) -> Self {
         if rhs.is_zero() {
-            return U256::zero();
+            return Self::zero();
         }
         let a_neg = self.is_negative();
         let b_neg = rhs.is_negative();
-        let a_abs = if a_neg { U256::zero() - self } else { self };
-        let b_abs = if b_neg { U256::zero() - rhs } else { rhs };
+        let a_abs = if a_neg { Self::zero() - self } else { self };
+        let b_abs = if b_neg { Self::zero() - rhs } else { rhs };
         let (q, _) = a_abs.div_rem(b_abs);
         if a_neg ^ b_neg {
-            U256::zero() - q
+            Self::zero() - q
         } else {
             q
         }
@@ -546,15 +566,15 @@ impl U256 {
     #[must_use]
     pub fn smod(self, rhs: Self) -> Self {
         if rhs.is_zero() {
-            return U256::zero();
+            return Self::zero();
         }
         let a_neg = self.is_negative();
         let b_neg = rhs.is_negative();
-        let a_abs = if a_neg { U256::zero() - self } else { self };
-        let b_abs = if b_neg { U256::zero() - rhs } else { rhs };
+        let a_abs = if a_neg { Self::zero() - self } else { self };
+        let b_abs = if b_neg { Self::zero() - rhs } else { rhs };
         let (_, r) = a_abs.div_rem(b_abs);
         if a_neg {
-            U256::zero() - r
+            Self::zero() - r
         } else {
             r
         }
@@ -591,7 +611,7 @@ mod tests {
 
     #[test]
     fn add_single_limb_carry() {
-        let a = U256::from_u64(0xFFFFFFFFFFFFFFFF);
+        let a = U256::from_u64(0xFFFF_FFFF_FFFF_FFFF);
         let b = U256::from_u64(1);
         let sum = a + b;
         assert_eq!(sum.0[0], 0);
@@ -770,12 +790,12 @@ mod tests {
             (U256::from_limbs(7, 0, 3, 0), U256::from_u64(2)),
             (
                 U256::from_limbs(
-                    0x8A3F92C81B4D6E70,
-                    0x2F5B1C9E3A7D84F6,
-                    0x1C6E4F8A2B3D5F71,
-                    0x9D2A4B6C8E1F3F5A,
+                    0x8A3F_92C8_1B4D_6E70,
+                    0x2F5B_1C9E_3A7D_84F6,
+                    0x1C6E_4F8A_2B3D_5F71,
+                    0x9D2A_4B6C_8E1F_3F5A,
                 ),
-                U256::from_limbs(0x3B9E4F1A6C2D8F5B, 0x7A3D1E5F2C4B6A8D, 0, 0),
+                U256::from_limbs(0x3B9E_4F1A_6C2D_8F5B, 0x7A3D_1E5F_2C4B_6A8D, 0, 0),
             ),
         ];
         for (a, b) in cases {
@@ -930,7 +950,7 @@ mod tests {
     fn shr_cross_limb() {
         let mut a = U256::zero();
         a.0[1] = 1;
-        assert_eq!(a.wrapping_shr(1).0[0], 0x8000000000000000);
+        assert_eq!(a.wrapping_shr(1).0[0], 0x8000_0000_0000_0000);
         assert_eq!(a.wrapping_shr(1).0[1], 0);
     }
 
@@ -942,7 +962,7 @@ mod tests {
 
     #[test]
     fn shl_shr_roundtrip() {
-        let a = U256::from_u64(0xDEADBEEF);
+        let a = U256::from_u64(0xDEAD_BEEF);
         assert_eq!(a.wrapping_shl(50).wrapping_shr(50), a);
     }
 
@@ -960,12 +980,10 @@ mod tests {
 
     #[test]
     fn shr_partial_limb_shift() {
-        let a = U256::from_limbs(0xABCDEF0123456789, 0x9876543210FEDCBA, 0, 0);
+        let a = U256::from_limbs(0xABCD_EF01_2345_6789, 0x9876_5432_10FE_DCBA, 0, 0);
         let shifted = a.wrapping_shr(4);
-        // limb[0] = limb[0] >> 4 | (limb[1] & 0xF) << 60 → bits[3:0] of limb[1] = 0xA
-        assert_eq!(shifted.0[0], 0xAABCDEF012345678);
-        // limb[1] = limb[1] >> 4 | 0 (no carry from limb[2])
-        assert_eq!(shifted.0[1], 0x09876543210FEDCB);
+        assert_eq!(shifted.0[0], 0xAABC_DEF0_1234_5678);
+        assert_eq!(shifted.0[1], 0x0987_6543_210F_EDCB);
     }
 
     // ---------- Checked variants ----------

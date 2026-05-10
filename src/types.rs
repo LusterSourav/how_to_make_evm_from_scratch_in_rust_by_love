@@ -14,29 +14,35 @@ pub struct U512(pub [u64; 8]);
 // ============================================================
 
 impl U256 {
+    #[must_use]
     pub const fn zero() -> Self {
-        U256([0; 4])
+        Self([0; 4])
     }
 
+    #[must_use]
     pub const fn one() -> Self {
-        U256([1, 0, 0, 0])
+        Self([1, 0, 0, 0])
     }
 
+    #[must_use]
     pub const fn from_u64(v: u64) -> Self {
-        U256([v, 0, 0, 0])
+        Self([v, 0, 0, 0])
     }
 
+    #[must_use]
     pub const fn from_u64_pair(lo: u64, hi: u64) -> Self {
-        U256([lo, hi, 0, 0])
+        Self([lo, hi, 0, 0])
     }
 
+    #[must_use]
     pub const fn from_limbs(l0: u64, l1: u64, l2: u64, l3: u64) -> Self {
-        U256([l0, l1, l2, l3])
+        Self([l0, l1, l2, l3])
     }
 
     /// Number of non-zero limbs counting from the most-significant end.
     /// Returns 0 if the value is zero.
-    pub fn significant_limbs(&self) -> usize {
+    #[must_use]
+    pub const fn significant_limbs(&self) -> usize {
         if self.0[3] != 0 {
             4
         } else if self.0[2] != 0 {
@@ -50,6 +56,7 @@ impl U256 {
         }
     }
 
+    #[must_use]
     pub fn to_bytes_le(&self) -> [u8; 32] {
         let mut bytes = [0u8; 32];
         for i in 0..4 {
@@ -59,6 +66,7 @@ impl U256 {
         bytes
     }
 
+    #[must_use]
     pub fn from_bytes_le(bytes: [u8; 32]) -> Self {
         let mut limbs = [0u64; 4];
         for i in 0..4 {
@@ -66,24 +74,27 @@ impl U256 {
             limb_bytes.copy_from_slice(&bytes[i * 8..i * 8 + 8]);
             limbs[i] = u64::from_le_bytes(limb_bytes);
         }
-        U256(limbs)
+        Self(limbs)
     }
 
+    #[must_use]
     pub const fn is_zero(&self) -> bool {
         self.0[0] == 0 && self.0[1] == 0 && self.0[2] == 0 && self.0[3] == 0
     }
 
+    #[must_use]
     pub const fn is_one(&self) -> bool {
         self.0[0] == 1 && self.0[1] == 0 && self.0[2] == 0 && self.0[3] == 0
     }
 
-    pub fn is_negative(&self) -> bool {
+    #[must_use]
+    pub const fn is_negative(&self) -> bool {
         self.0[3] >> 63 != 0
     }
 
     /// Two's complement absolute value.
     ///
-    /// For INT256_MIN (0x8000...0000) this returns INT256_MIN since its
+    /// For `INT256_MIN` (0x8000...0000) this returns `INT256_MIN` since its
     /// positive value does not fit in 256 bits. Callers performing signed
     /// arithmetic should handle this case at the SDIV/SMOD level.
     #[must_use]
@@ -157,10 +168,12 @@ impl Ord for U256 {
 // ============================================================
 
 impl U512 {
+    #[must_use]
     pub const fn zero() -> Self {
-        U512([0; 8])
+        Self([0; 8])
     }
 
+    #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub const fn from_limbs(
         l0: u64,
@@ -172,29 +185,32 @@ impl U512 {
         l6: u64,
         l7: u64,
     ) -> Self {
-        U512([l0, l1, l2, l3, l4, l5, l6, l7])
+        Self([l0, l1, l2, l3, l4, l5, l6, l7])
     }
 
+    #[must_use]
     pub const fn from_u256(lo: U256) -> Self {
-        U512([lo.0[0], lo.0[1], lo.0[2], lo.0[3], 0, 0, 0, 0])
+        Self([lo.0[0], lo.0[1], lo.0[2], lo.0[3], 0, 0, 0, 0])
     }
 
+    #[must_use]
     pub const fn from_u256_pair(lo: U256, hi: U256) -> Self {
-        U512([
-            lo.0[0], lo.0[1], lo.0[2], lo.0[3], hi.0[0], hi.0[1], hi.0[2], hi.0[3],
-        ])
+        Self([lo.0[0], lo.0[1], lo.0[2], lo.0[3], hi.0[0], hi.0[1], hi.0[2], hi.0[3]])
     }
 
     /// Lower 256 bits as a U256.
-    pub fn low_u256(&self) -> U256 {
+    #[must_use]
+    pub const fn low_u256(&self) -> U256 {
         U256([self.0[0], self.0[1], self.0[2], self.0[3]])
     }
 
     /// Upper 256 bits as a U256.
-    pub fn high_u256(&self) -> U256 {
+    #[must_use]
+    pub const fn high_u256(&self) -> U256 {
         U256([self.0[4], self.0[5], self.0[6], self.0[7]])
     }
 
+    #[must_use]
     pub const fn is_zero(&self) -> bool {
         self.0[0] == 0
             && self.0[1] == 0
