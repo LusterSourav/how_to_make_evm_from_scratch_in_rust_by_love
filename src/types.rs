@@ -81,9 +81,15 @@ impl U256 {
         self.0[3] >> 63 != 0
     }
 
+    /// Two's complement absolute value.
+    ///
+    /// For INT256_MIN (0x8000...0000) this returns INT256_MIN since its
+    /// positive value does not fit in 256 bits. Callers performing signed
+    /// arithmetic should handle this case at the SDIV/SMOD level.
+    #[must_use]
     pub fn abs(&self) -> Self {
         if self.is_negative() {
-            Self::zero() - *self
+            Self::zero().wrapping_sub(*self)
         } else {
             *self
         }

@@ -100,15 +100,24 @@ impl U256 {
     pub fn mul_full(self, rhs: Self) -> U512 {
         let mut res = [0u64; 8];
         for i in 0..4 {
-            let mut carry: u64 = 0;
+            let mut carry: u128 = 0;
             for j in 0..4 {
                 let k = i + j;
                 let product = (self.0[i] as u128) * (rhs.0[j] as u128);
-                let sum = product + (res[k] as u128) + (carry as u128);
+                let sum = product + (res[k] as u128) + carry;
                 res[k] = sum as u64;
-                carry = (sum >> 64) as u64;
+                carry = sum >> 64;
             }
-            res[i + 4] = res[i + 4].wrapping_add(carry);
+            let mut idx = i + 4;
+            while carry != 0 {
+                let sum = (res[idx] as u128) + carry;
+                res[idx] = sum as u64;
+                carry = sum >> 64;
+                idx += 1;
+                if idx >= 8 {
+                    break;
+                }
+            }
         }
         U512(res)
     }
@@ -203,11 +212,11 @@ impl U256 {
 
         let inv = 64 - bit_shift;
         let mut limbs = [0u64; 4];
-        let max_i = 3 - limb_off;
-        for (i, limb) in limbs.iter_mut().enumerate().take(max_i) {
+        let hi_idx = 3 - limb_off;
+        for (i, limb) in limbs.iter_mut().enumerate().take(hi_idx) {
             *limb = (self.0[i + limb_off] >> bit_shift) | (self.0[i + limb_off + 1] << inv);
         }
-        limbs[max_i] = self.0[max_i + limb_off] >> bit_shift;
+        limbs[hi_idx] = self.0[hi_idx + limb_off] >> bit_shift;
         U256(limbs)
     }
 }
@@ -610,6 +619,29 @@ mod tests {
         assert_eq!(prod.0[3], 1);
     }
 
+    #[test]
+    fn mul_full_carry_propagates_to_limb7() {
+        let a = U256::from_limbs(u64::MAX, u64::MAX, u64::MAX, u64::MAX);
+        let b = U256::from_limbs(u64::MAX, u64::MAX, u64::MAX, u64::MAX);
+        let full = a.mul_full(b);
+        let hi = full.high_u256();
+        let lo = full.low_u256();
+        // (2^256-1)^2 = 2^512 - 2^257 + 1
+        // high = 2^256 - 2, low = 1
+        assert_eq!(hi.0[0], u64::MAX - 1);
+        assert_eq!(hi.0[1], u64::MAX);
+        assert_eq!(hi.0[2], u64::MAX);
+        assert_eq!(hi.0[3], u64::MAX);
+        assert_eq!(lo, U256::one());
+    }
+
+    #[test]
+    fn mul_full_max_self_overflow_detected() {
+        let a = U256::from_limbs(u64::MAX, u64::MAX, u64::MAX, u64::MAX);
+        let (_, overflow) = a.overflowing_mul(a);
+        assert!(overflow);
+    }
+
     // ---------- Division ----------
 
     #[test]
@@ -851,6 +883,16 @@ mod tests {
     fn shr_zero_identity() {
         let a = U256::from_limbs(0xDEAD, 0xBEEF, 0xCAFE, 0xBAAD);
         assert_eq!(a.wrapping_shr(0), a);
+    }
+
+    #[test]
+    fn shr_partial_limb_shift() {
+        let a = U256::from_limbs(0xABCDEF0123456789, 0x9876543210FEDCBA, 0, 0);
+        let shifted = a.wrapping_shr(4);
+        // limb[0] = limb[0] >> 4 | (limb[1] & 0xF) << 60 → bits[3:0] of limb[1] = 0xA
+        assert_eq!(shifted.0[0], 0xAABCDEF012345678);
+        // limb[1] = limb[1] >> 4 | 0 (no carry from limb[2])
+        assert_eq!(shifted.0[1], 0x09876543210FEDCB);
     }
 
     // ---------- Checked variants ----------
