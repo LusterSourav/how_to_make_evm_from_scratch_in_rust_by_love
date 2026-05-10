@@ -1,5 +1,6 @@
 use crate::types::{U256, U512};
-use core::ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign, Div, Rem};
+use crate::U256_MAX;
+use core::ops::{Add, AddAssign, Div, Mul, MulAssign, Rem, Shl, Shr, Sub, SubAssign};
 
 // ============================================================
 // Addition — limb-wise with carry propagation
@@ -9,10 +10,10 @@ impl U256 {
     pub fn overflowing_add(self, rhs: Self) -> (Self, bool) {
         let mut limbs = [0u64; 4];
         let mut carry = false;
-        for i in 0..4 {
+        for (i, limb) in limbs.iter_mut().enumerate() {
             let (sum, c1) = self.0[i].overflowing_add(rhs.0[i]);
             let (sum, c2) = sum.overflowing_add(carry as u64);
-            limbs[i] = sum;
+            *limb = sum;
             carry = c1 || c2;
         }
         (U256(limbs), carry)
@@ -22,9 +23,14 @@ impl U256 {
         self.overflowing_add(rhs).0
     }
 
+    #[must_use]
     pub fn checked_add(self, rhs: Self) -> Option<Self> {
         let (result, overflow) = self.overflowing_add(rhs);
-        if overflow { None } else { Some(result) }
+        if overflow {
+            None
+        } else {
+            Some(result)
+        }
     }
 }
 
@@ -49,10 +55,10 @@ impl U256 {
     pub fn overflowing_sub(self, rhs: Self) -> (Self, bool) {
         let mut limbs = [0u64; 4];
         let mut borrow = false;
-        for i in 0..4 {
+        for (i, limb) in limbs.iter_mut().enumerate() {
             let (diff, b1) = self.0[i].overflowing_sub(rhs.0[i]);
             let (diff, b2) = diff.overflowing_sub(borrow as u64);
-            limbs[i] = diff;
+            *limb = diff;
             borrow = b1 || b2;
         }
         (U256(limbs), borrow)
@@ -62,9 +68,14 @@ impl U256 {
         self.overflowing_sub(rhs).0
     }
 
+    #[must_use]
     pub fn checked_sub(self, rhs: Self) -> Option<Self> {
         let (result, underflow) = self.overflowing_sub(rhs);
-        if underflow { None } else { Some(result) }
+        if underflow {
+            None
+        } else {
+            Some(result)
+        }
     }
 }
 
@@ -111,9 +122,24 @@ impl U256 {
         (full.low_u256(), !full.high_u256().is_zero())
     }
 
+    #[must_use]
     pub fn checked_mul(self, rhs: Self) -> Option<Self> {
         let (result, overflow) = self.overflowing_mul(rhs);
-        if overflow { None } else { Some(result) }
+        if overflow {
+            None
+        } else {
+            Some(result)
+        }
+    }
+
+    #[must_use]
+    pub fn saturating_mul(self, rhs: Self) -> Self {
+        let (result, overflow) = self.overflowing_mul(rhs);
+        if overflow {
+            U256_MAX
+        } else {
+            result
+        }
     }
 }
 
@@ -135,7 +161,7 @@ impl MulAssign for U256 {
 // ============================================================
 
 impl U256 {
-    pub fn shl(self, shift: u32) -> Self {
+    pub fn wrapping_shl(self, shift: u32) -> Self {
         if shift >= 256 {
             return U256::zero();
         }
@@ -144,27 +170,25 @@ impl U256 {
 
         if bit_shift == 0 {
             let mut limbs = [0u64; 4];
-            for i in limb_off..4 {
-                limbs[i] = self.0[i - limb_off];
-            }
+            limbs[limb_off..4].copy_from_slice(&self.0[..4 - limb_off]);
             return U256(limbs);
         }
 
         let inv = 64 - bit_shift;
         let mut limbs = [0u64; 4];
-        for i in limb_off..4 {
+        for (i, limb) in limbs.iter_mut().enumerate().skip(limb_off) {
             let lo = self.0[i - limb_off] << bit_shift;
             let hi = if i > limb_off {
                 self.0[i - limb_off - 1] >> inv
             } else {
                 0
             };
-            limbs[i] = lo | hi;
+            *limb = lo | hi;
         }
         U256(limbs)
     }
 
-    pub fn shr(self, shift: u32) -> Self {
+    pub fn wrapping_shr(self, shift: u32) -> Self {
         if shift >= 256 {
             return U256::zero();
         }
@@ -173,20 +197,32 @@ impl U256 {
 
         if bit_shift == 0 {
             let mut limbs = [0u64; 4];
-            for i in 0..(4 - limb_off) {
-                limbs[i] = self.0[i + limb_off];
-            }
+            limbs[..4 - limb_off].copy_from_slice(&self.0[limb_off..4]);
             return U256(limbs);
         }
 
         let inv = 64 - bit_shift;
         let mut limbs = [0u64; 4];
         let max_i = 3 - limb_off;
-        for i in 0..max_i {
-            limbs[i] = (self.0[i + limb_off] >> bit_shift) | (self.0[i + limb_off + 1] << inv);
+        for (i, limb) in limbs.iter_mut().enumerate().take(max_i) {
+            *limb = (self.0[i + limb_off] >> bit_shift) | (self.0[i + limb_off + 1] << inv);
         }
         limbs[max_i] = self.0[max_i + limb_off] >> bit_shift;
         U256(limbs)
+    }
+}
+
+impl Shl<u32> for U256 {
+    type Output = Self;
+    fn shl(self, rhs: u32) -> Self {
+        self.wrapping_shl(rhs)
+    }
+}
+
+impl Shr<u32> for U256 {
+    type Output = Self;
+    fn shr(self, rhs: u32) -> Self {
+        self.wrapping_shr(rhs)
     }
 }
 
@@ -383,8 +419,8 @@ impl U256 {
         if exponent.is_zero() {
             return U256::one();
         }
-        if self.is_zero() {
-            return U256::zero();
+        if self.is_zero() || self.is_one() {
+            return self;
         }
 
         let mut base = self;
@@ -396,7 +432,7 @@ impl U256 {
                 result = result.wrapping_mul(base);
             }
             base = base.wrapping_mul(base);
-            exp = exp.shr(1);
+            exp = exp.wrapping_shr(1);
         }
 
         result
@@ -408,6 +444,7 @@ impl U256 {
 // ============================================================
 
 impl U256 {
+    #[must_use]
     pub fn sdiv(self, rhs: Self) -> Self {
         if rhs.is_zero() {
             return U256::zero();
@@ -424,6 +461,7 @@ impl U256 {
         }
     }
 
+    #[must_use]
     pub fn smod(self, rhs: Self) -> Self {
         if rhs.is_zero() {
             return U256::zero();
@@ -625,8 +663,15 @@ mod tests {
             (U256::from_u64(5), U256::from_u64(100)),
             (U256_MAX, U256::from_u64(1)),
             (U256::from_limbs(7, 0, 3, 0), U256::from_u64(2)),
-            (U256::from_limbs(0x8A3F92C81B4D6E70, 0x2F5B1C9E3A7D84F6, 0x1C6E4F8A2B3D5F71, 0x9D2A4B6C8E1F3F5A),
-             U256::from_limbs(0x3B9E4F1A6C2D8F5B, 0x7A3D1E5F2C4B6A8D, 0, 0)),
+            (
+                U256::from_limbs(
+                    0x8A3F92C81B4D6E70,
+                    0x2F5B1C9E3A7D84F6,
+                    0x1C6E4F8A2B3D5F71,
+                    0x9D2A4B6C8E1F3F5A,
+                ),
+                U256::from_limbs(0x3B9E4F1A6C2D8F5B, 0x7A3D1E5F2C4B6A8D, 0, 0),
+            ),
         ];
         for (a, b) in cases {
             let (q, r) = a.div_rem(b);
@@ -664,7 +709,10 @@ mod tests {
 
     #[test]
     fn exp_small() {
-        assert_eq!(U256::from_u64(2).exp(U256::from_u64(10)), U256::from_u64(1024));
+        assert_eq!(
+            U256::from_u64(2).exp(U256::from_u64(10)),
+            U256::from_u64(1024)
+        );
     }
 
     #[test]
@@ -682,13 +730,19 @@ mod tests {
 
     #[test]
     fn sdiv_positive() {
-        assert_eq!(U256::from_u64(10).sdiv(U256::from_u64(3)), U256::from_u64(3));
+        assert_eq!(
+            U256::from_u64(10).sdiv(U256::from_u64(3)),
+            U256::from_u64(3)
+        );
     }
 
     #[test]
     fn sdiv_mixed_sign() {
         let neg_ten = U256::zero() - U256::from_u64(10);
-        assert_eq!(neg_ten.sdiv(U256::from_u64(3)), U256::zero() - U256::from_u64(3));
+        assert_eq!(
+            neg_ten.sdiv(U256::from_u64(3)),
+            U256::zero() - U256::from_u64(3)
+        );
     }
 
     #[test]
@@ -705,7 +759,8 @@ mod tests {
 
     #[test]
     fn sdiv_int256_min_by_neg_one() {
-        let int_min = u256_hex("0x8000000000000000000000000000000000000000000000000000000000000000");
+        let int_min =
+            u256_hex("0x8000000000000000000000000000000000000000000000000000000000000000");
         let neg_one = U256::zero() - U256::one();
         assert_eq!(int_min.sdiv(neg_one), int_min);
     }
@@ -714,7 +769,10 @@ mod tests {
 
     #[test]
     fn smod_basic() {
-        assert_eq!(U256::from_u64(10).smod(U256::from_u64(3)), U256::from_u64(1));
+        assert_eq!(
+            U256::from_u64(10).smod(U256::from_u64(3)),
+            U256::from_u64(1)
+        );
     }
 
     #[test]
@@ -733,13 +791,13 @@ mod tests {
 
     #[test]
     fn shl_basic() {
-        assert_eq!(U256::from_u64(1).shl(10), U256::from_u64(1024));
+        assert_eq!(U256::from_u64(1).wrapping_shl(10), U256::from_u64(1024));
     }
 
     #[test]
     fn shl_cross_limb() {
         let a = U256::from_u64(1);
-        let shifted = a.shl(64);
+        let shifted = a.wrapping_shl(64);
         assert_eq!(shifted.0[1], 1);
         assert_eq!(shifted.0[0], 0);
     }
@@ -747,40 +805,52 @@ mod tests {
     #[test]
     fn shl_multi_limb_carry() {
         let a = U256::from_limbs(u64::MAX, 0, 0, 0);
-        let shifted = a.shl(1);
+        let shifted = a.wrapping_shl(1);
         assert_eq!(shifted.0[0], u64::MAX << 1);
         assert_eq!(shifted.0[1], 1);
     }
 
     #[test]
     fn shl_overflow_discards_bits() {
-        assert_eq!(U256::from_u64(1).shl(256), U256::zero());
-        assert_eq!(U256::from_u64(1).shl(300), U256::zero());
+        assert_eq!(U256::from_u64(1).wrapping_shl(256), U256::zero());
+        assert_eq!(U256::from_u64(1).wrapping_shl(300), U256::zero());
     }
 
     #[test]
     fn shr_basic() {
-        assert_eq!(U256::from_u64(1024).shr(10), U256::from_u64(1));
+        assert_eq!(U256::from_u64(1024).wrapping_shr(10), U256::from_u64(1));
     }
 
     #[test]
     fn shr_cross_limb() {
         let mut a = U256::zero();
         a.0[1] = 1;
-        assert_eq!(a.shr(1).0[0], 0x8000000000000000);
-        assert_eq!(a.shr(1).0[1], 0);
+        assert_eq!(a.wrapping_shr(1).0[0], 0x8000000000000000);
+        assert_eq!(a.wrapping_shr(1).0[1], 0);
     }
 
     #[test]
     fn shr_large_returns_zero() {
-        assert_eq!(U256_MAX.shr(256), U256::zero());
-        assert_eq!(U256_MAX.shr(300), U256::zero());
+        assert_eq!(U256_MAX.wrapping_shr(256), U256::zero());
+        assert_eq!(U256_MAX.wrapping_shr(300), U256::zero());
     }
 
     #[test]
     fn shl_shr_roundtrip() {
         let a = U256::from_u64(0xDEADBEEF);
-        assert_eq!(a.shl(50).shr(50), a);
+        assert_eq!(a.wrapping_shl(50).wrapping_shr(50), a);
+    }
+
+    #[test]
+    fn shl_zero_identity() {
+        let a = U256::from_limbs(0xDEAD, 0xBEEF, 0xCAFE, 0xBAAD);
+        assert_eq!(a.wrapping_shl(0), a);
+    }
+
+    #[test]
+    fn shr_zero_identity() {
+        let a = U256::from_limbs(0xDEAD, 0xBEEF, 0xCAFE, 0xBAAD);
+        assert_eq!(a.wrapping_shr(0), a);
     }
 
     // ---------- Checked variants ----------
@@ -799,5 +869,31 @@ mod tests {
     fn checked_mul_overflow() {
         let big = U256::from_limbs(u64::MAX, u64::MAX, u64::MAX, u64::MAX >> 1);
         assert!(big.checked_mul(U256::from_u64(4)).is_none());
+    }
+
+    #[test]
+    fn saturating_mul_no_overflow() {
+        assert_eq!(
+            U256::from_u64(6).saturating_mul(U256::from_u64(7)),
+            U256::from_u64(42)
+        );
+    }
+
+    #[test]
+    fn saturating_mul_overflow() {
+        let big = U256::from_limbs(u64::MAX, u64::MAX, u64::MAX, u64::MAX >> 1);
+        assert_eq!(big.saturating_mul(U256::from_u64(4)), U256_MAX);
+    }
+
+    #[test]
+    fn shl_trait() {
+        assert_eq!(U256::from_u64(1) << 10u32, U256::from_u64(1024));
+        assert_eq!(U256::from_u64(1) << 256u32, U256::zero());
+    }
+
+    #[test]
+    fn shr_trait() {
+        assert_eq!(U256::from_u64(1024) >> 10u32, U256::from_u64(1));
+        assert_eq!(U256::from_u64(1) >> 1u32, U256::zero());
     }
 }

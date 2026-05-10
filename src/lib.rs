@@ -10,8 +10,8 @@
 #![no_std]
 #![cfg_attr(feature = "runtime", feature(alloc_error_handler))]
 
-pub mod types;
 pub mod ops;
+pub mod types;
 
 #[cfg(feature = "runtime")]
 pub mod lang_items;

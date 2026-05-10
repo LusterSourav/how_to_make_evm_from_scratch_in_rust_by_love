@@ -1,5 +1,5 @@
-use core::fmt;
 use core::cmp::Ordering;
+use core::fmt;
 
 pub const U256_MAX: U256 = U256([!0u64; 4]);
 
@@ -37,11 +37,17 @@ impl U256 {
     /// Number of non-zero limbs counting from the most-significant end.
     /// Returns 0 if the value is zero.
     pub fn significant_limbs(&self) -> usize {
-        if self.0[3] != 0 { 4 }
-        else if self.0[2] != 0 { 3 }
-        else if self.0[1] != 0 { 2 }
-        else if self.0[0] != 0 { 1 }
-        else { 0 }
+        if self.0[3] != 0 {
+            4
+        } else if self.0[2] != 0 {
+            3
+        } else if self.0[1] != 0 {
+            2
+        } else if self.0[0] != 0 {
+            1
+        } else {
+            0
+        }
     }
 
     pub fn to_bytes_le(&self) -> [u8; 32] {
@@ -90,7 +96,11 @@ impl U256 {
 
 impl fmt::Display for U256 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "0x{:016x}{:016x}{:016x}{:016x}", self.0[3], self.0[2], self.0[1], self.0[0])
+        write!(
+            f,
+            "0x{:016x}{:016x}{:016x}{:016x}",
+            self.0[3], self.0[2], self.0[1], self.0[0]
+        )
     }
 }
 
@@ -125,9 +135,16 @@ impl U512 {
         U512([0; 8])
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub const fn from_limbs(
-        l0: u64, l1: u64, l2: u64, l3: u64,
-        l4: u64, l5: u64, l6: u64, l7: u64,
+        l0: u64,
+        l1: u64,
+        l2: u64,
+        l3: u64,
+        l4: u64,
+        l5: u64,
+        l6: u64,
+        l7: u64,
     ) -> Self {
         U512([l0, l1, l2, l3, l4, l5, l6, l7])
     }
@@ -137,7 +154,9 @@ impl U512 {
     }
 
     pub fn from_u256s(lo: &U256, hi: &U256) -> Self {
-        U512([lo.0[0], lo.0[1], lo.0[2], lo.0[3], hi.0[0], hi.0[1], hi.0[2], hi.0[3]])
+        U512([
+            lo.0[0], lo.0[1], lo.0[2], lo.0[3], hi.0[0], hi.0[1], hi.0[2], hi.0[3],
+        ])
     }
 
     /// Lower 256 bits as a U256.
@@ -151,17 +170,23 @@ impl U512 {
     }
 
     pub const fn is_zero(&self) -> bool {
-        self.0[0] == 0 && self.0[1] == 0 && self.0[2] == 0 && self.0[3] == 0
-        && self.0[4] == 0 && self.0[5] == 0 && self.0[6] == 0 && self.0[7] == 0
+        self.0[0] == 0
+            && self.0[1] == 0
+            && self.0[2] == 0
+            && self.0[3] == 0
+            && self.0[4] == 0
+            && self.0[5] == 0
+            && self.0[6] == 0
+            && self.0[7] == 0
     }
 }
 
 impl fmt::Display for U512 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "0x{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}",
-            self.0[7], self.0[6], self.0[5], self.0[4],
-            self.0[3], self.0[2], self.0[1], self.0[0],
+            f,
+            "0x{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}",
+            self.0[7], self.0[6], self.0[5], self.0[4], self.0[3], self.0[2], self.0[1], self.0[0],
         )
     }
 }
