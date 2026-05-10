@@ -1,6 +1,9 @@
 use crate::types::{U256, U512};
 use crate::U256_MAX;
-use core::ops::{Add, AddAssign, Div, Mul, MulAssign, Rem, Shl, Shr, Sub, SubAssign};
+use core::ops::{
+    Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div, Mul,
+    MulAssign, Not, Rem, Shl, Shr, Sub, SubAssign,
+};
 
 // ============================================================
 // Addition — limb-wise with carry propagation
@@ -162,6 +165,76 @@ impl Mul for U256 {
 impl MulAssign for U256 {
     fn mul_assign(&mut self, rhs: Self) {
         *self = self.wrapping_mul(rhs);
+    }
+}
+
+// ============================================================
+// Bitwise operations
+// ============================================================
+
+impl Not for U256 {
+    type Output = Self;
+    fn not(self) -> Self {
+        U256([
+            !self.0[0],
+            !self.0[1],
+            !self.0[2],
+            !self.0[3],
+        ])
+    }
+}
+
+impl BitAnd for U256 {
+    type Output = Self;
+    fn bitand(self, rhs: Self) -> Self {
+        U256([
+            self.0[0] & rhs.0[0],
+            self.0[1] & rhs.0[1],
+            self.0[2] & rhs.0[2],
+            self.0[3] & rhs.0[3],
+        ])
+    }
+}
+
+impl BitAndAssign for U256 {
+    fn bitand_assign(&mut self, rhs: Self) {
+        *self = *self & rhs;
+    }
+}
+
+impl BitOr for U256 {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        U256([
+            self.0[0] | rhs.0[0],
+            self.0[1] | rhs.0[1],
+            self.0[2] | rhs.0[2],
+            self.0[3] | rhs.0[3],
+        ])
+    }
+}
+
+impl BitOrAssign for U256 {
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self = *self | rhs;
+    }
+}
+
+impl BitXor for U256 {
+    type Output = Self;
+    fn bitxor(self, rhs: Self) -> Self {
+        U256([
+            self.0[0] ^ rhs.0[0],
+            self.0[1] ^ rhs.0[1],
+            self.0[2] ^ rhs.0[2],
+            self.0[3] ^ rhs.0[3],
+        ])
+    }
+}
+
+impl BitXorAssign for U256 {
+    fn bitxor_assign(&mut self, rhs: Self) {
+        *self = *self ^ rhs;
     }
 }
 
@@ -937,5 +1010,39 @@ mod tests {
     fn shr_trait() {
         assert_eq!(U256::from_u64(1024) >> 10u32, U256::from_u64(1));
         assert_eq!(U256::from_u64(1) >> 1u32, U256::zero());
+    }
+
+    // ---------- Bitwise operations ----------
+
+    #[test]
+    fn not_identity() {
+        assert_eq!(!U256::zero(), U256_MAX);
+        assert_eq!(!U256_MAX, U256::zero());
+    }
+
+    #[test]
+    fn and_mask() {
+        let a = U256::from_limbs(0xFF, 0xFF, 0xFF, 0xFF);
+        let mask = U256::from_limbs(0x0F, 0x00, 0xF0, 0xFF);
+        assert_eq!(a & mask, mask);
+    }
+
+    #[test]
+    fn or_combine() {
+        let a = U256::from_limbs(0xF0, 0, 0, 0);
+        let b = U256::from_limbs(0x0F, 0, 0, 0);
+        assert_eq!(a | b, U256::from_limbs(0xFF, 0, 0, 0));
+    }
+
+    #[test]
+    fn xor_self_is_zero() {
+        let a = U256::from_limbs(0xDEAD, 0xBEEF, 0xCAFE, 0xBAAD);
+        assert_eq!(a ^ a, U256::zero());
+    }
+
+    #[test]
+    fn xor_inverse() {
+        let a = U256::from_limbs(0xDEAD, 0xBEEF, 0xCAFE, 0xBAAD);
+        assert_eq!(a ^ !a, U256_MAX);
     }
 }

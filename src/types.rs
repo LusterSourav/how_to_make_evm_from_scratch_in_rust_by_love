@@ -26,7 +26,7 @@ impl U256 {
         U256([v, 0, 0, 0])
     }
 
-    pub const fn from_u64s(lo: u64, hi: u64) -> Self {
+    pub const fn from_u64_pair(lo: u64, hi: u64) -> Self {
         U256([lo, hi, 0, 0])
     }
 
@@ -110,6 +110,26 @@ impl fmt::Display for U256 {
     }
 }
 
+impl fmt::LowerHex for U256 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:016x}{:016x}{:016x}{:016x}",
+            self.0[3], self.0[2], self.0[1], self.0[0]
+        )
+    }
+}
+
+impl fmt::UpperHex for U256 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:016X}{:016X}{:016X}{:016X}",
+            self.0[3], self.0[2], self.0[1], self.0[0]
+        )
+    }
+}
+
 // ============================================================
 // U256 — Ordering
 // ============================================================
@@ -155,11 +175,11 @@ impl U512 {
         U512([l0, l1, l2, l3, l4, l5, l6, l7])
     }
 
-    pub fn from_u256(lo: &U256) -> Self {
+    pub const fn from_u256(lo: U256) -> Self {
         U512([lo.0[0], lo.0[1], lo.0[2], lo.0[3], 0, 0, 0, 0])
     }
 
-    pub fn from_u256s(lo: &U256, hi: &U256) -> Self {
+    pub const fn from_u256_pair(lo: U256, hi: U256) -> Self {
         U512([
             lo.0[0], lo.0[1], lo.0[2], lo.0[3], hi.0[0], hi.0[1], hi.0[2], hi.0[3],
         ])
@@ -192,6 +212,26 @@ impl fmt::Display for U512 {
         write!(
             f,
             "0x{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}",
+            self.0[7], self.0[6], self.0[5], self.0[4], self.0[3], self.0[2], self.0[1], self.0[0],
+        )
+    }
+}
+
+impl fmt::LowerHex for U512 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}",
+            self.0[7], self.0[6], self.0[5], self.0[4], self.0[3], self.0[2], self.0[1], self.0[0],
+        )
+    }
+}
+
+impl fmt::UpperHex for U512 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:016X}{:016X}{:016X}{:016X}{:016X}{:016X}{:016X}{:016X}",
             self.0[7], self.0[6], self.0[5], self.0[4], self.0[3], self.0[2], self.0[1], self.0[0],
         )
     }
