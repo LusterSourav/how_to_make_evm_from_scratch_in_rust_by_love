@@ -1,4 +1,4 @@
-use crate::types::{U256, U256_MAX, U512};
+use crate::types::{U256, U512};
 use core::ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign, Div, Rem};
 
 // ============================================================
@@ -97,13 +97,7 @@ impl U256 {
                 res[k] = sum as u64;
                 carry = (sum >> 64) as u64;
             }
-            let mut k = i + 4;
-            while carry != 0 {
-                let sum = (res[k] as u128) + (carry as u128);
-                res[k] = sum as u64;
-                carry = (sum >> 64) as u64;
-                k += 1;
-            }
+            res[i + 4] = res[i + 4].wrapping_add(carry);
         }
         U512(res)
     }
@@ -454,6 +448,7 @@ impl U256 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::U256_MAX;
 
     fn u256_hex(s: &str) -> U256 {
         let s = s.strip_prefix("0x").unwrap_or(s);

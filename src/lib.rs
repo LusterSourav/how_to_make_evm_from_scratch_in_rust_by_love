@@ -8,7 +8,6 @@
 // Division by zero returns 0 per the EVM Yellow Paper.
 
 #![no_std]
-#![feature(core_intrinsics)]
 #![cfg_attr(feature = "runtime", feature(alloc_error_handler))]
 
 pub mod types;
