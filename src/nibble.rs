@@ -291,10 +291,41 @@ pub const MAX_PACKED_BYTES: usize = 33;
 ///
 /// The maximum input is 64 nibbles (from a 32-byte hash). With HP padding
 /// (one extra nibble for even-length paths) the maximum output is [`MAX_PACKED_BYTES`] bytes.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy)]
 pub struct NibblePathPacked {
     inner: [u8; MAX_PACKED_BYTES],
     len: usize,
+}
+
+impl PartialEq for NibblePathPacked {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.len == other.len && self.inner[..self.len] == other.inner[..other.len]
+    }
+}
+
+impl Eq for NibblePathPacked {}
+
+impl PartialOrd for NibblePathPacked {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for NibblePathPacked {
+    #[inline]
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.inner[..self.len].cmp(&other.inner[..other.len])
+    }
+}
+
+impl core::hash::Hash for NibblePathPacked {
+    #[inline]
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.len.hash(state);
+        self.inner[..self.len].hash(state);
+    }
 }
 
 impl NibblePathPacked {
@@ -369,7 +400,7 @@ const fn pack_nibble_pairs(
     let mut ni = start_nibble;
     let mut bi = start_byte;
     while ni + 1 < path.len() {
-        out[bi] = (path[ni].0 << 4) | path[ni + 1].0;
+        out[bi] = nibbles_to_byte(path[ni], path[ni + 1]);
         ni += 2;
         bi += 1;
     }
