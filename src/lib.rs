@@ -21,6 +21,7 @@ pub use nibble::Nibble;
 pub use nibble::NibbleIterator;
 pub use nibble::NibblePathPacked;
 pub use nibble::encode_nibble_path_padded;
+pub use nibble::from_byte;
 pub use nibble::high_nibble;
 pub use nibble::low_nibble;
 pub use nibble::nibbles_to_byte;

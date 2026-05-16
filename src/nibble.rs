@@ -142,7 +142,7 @@ pub struct NibbleIterator<'a> {
     bytes: &'a [u8],
     /// Nibble-offset from the start (0 = first high nibble of bytes[0]).
     front: usize,
-    /// Nibble-offset from the end (exclusive; total nibble count = bytes.len() * 2).
+    /// Nibble-offset from the end (exclusive; total nibble count = `bytes.len()` * 2).
     back: usize,
 }
 
@@ -203,7 +203,7 @@ impl<'a> NibbleIterator<'a> {
     }
 }
 
-impl<'a> Iterator for NibbleIterator<'a> {
+impl Iterator for NibbleIterator<'_> {
     type Item = Nibble;
 
     #[inline]
@@ -243,7 +243,7 @@ impl<'a> Iterator for NibbleIterator<'a> {
     }
 }
 
-impl<'a> DoubleEndedIterator for NibbleIterator<'a> {
+impl DoubleEndedIterator for NibbleIterator<'_> {
     #[inline]
     fn next_back(&mut self) -> Option<Nibble> {
         if self.front >= self.back {
