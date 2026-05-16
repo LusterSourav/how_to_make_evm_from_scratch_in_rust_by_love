@@ -141,7 +141,7 @@ pub const fn nibbles_to_byte(high: Nibble, low: Nibble) -> u8 {
 /// navigation.
 ///
 /// Supports forward (`next`) and reverse (`next_back`) iteration.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct NibbleIterator<'a> {
     bytes: &'a [u8],
     /// Nibble-offset from the start (0 = first high nibble of bytes[0]).
@@ -208,7 +208,6 @@ impl<'a> NibbleIterator<'a> {
     }
 }
 
-#[allow(clippy::copy_iterator)]
 impl Iterator for NibbleIterator<'_> {
     type Item = Nibble;
 
@@ -292,7 +291,7 @@ pub const MAX_PACKED_BYTES: usize = 33;
 ///
 /// The maximum input is 64 nibbles (from a 32-byte hash). With HP padding
 /// (one extra nibble for even-length paths) the maximum output is [`MAX_PACKED_BYTES`] bytes.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NibblePathPacked {
     inner: [u8; MAX_PACKED_BYTES],
     len: usize,
@@ -360,7 +359,6 @@ impl fmt::Debug for NibblePathPacked {
 
 /// Pack consecutive nibble pairs from `path` into bytes starting at
 /// `start_nibble`/`start_byte`. Returns the number of bytes written.
-#[inline]
 #[must_use]
 const fn pack_nibble_pairs(
     path: &[Nibble],
@@ -395,7 +393,6 @@ const fn pack_nibble_pairs(
 ///
 /// Panics if the path is longer than 64 nibbles (the maximum for a 32-byte
 /// hash, which is the longest key in the MPT).
-#[inline]
 #[must_use]
 pub fn encode_nibble_path_padded(path: &[Nibble]) -> NibblePathPacked {
     assert!(
@@ -955,6 +952,7 @@ mod tests {
     fn packed_empty_path_is_one_byte() {
         let path = [];
         let packed = encode_nibble_path_padded(&path);
+        assert_eq!(packed.len(), 1);
         assert!(!packed.is_empty());
     }
 
