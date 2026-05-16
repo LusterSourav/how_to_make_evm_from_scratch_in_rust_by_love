@@ -10,6 +10,7 @@ use core::iter::FusedIterator;
 /// Ethereum's Modified Merkle Patricia Trie operates on 4-bit nibbles,
 /// but physical storage is byte-oriented. This newtype enforces the
 /// nibble invariant at the type level.
+#[repr(transparent)]
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Nibble(u8);
 
@@ -178,7 +179,7 @@ impl<'a> NibbleIterator<'a> {
         if self.front >= self.back {
             return None;
         }
-        Some(Self::nibble_at(self.front, self.bytes[self.front / 2]))
+        Some(Self::nibble_at(self.front, self.bytes[self.front >> 1]))
     }
 
     /// Peek at the next nibble from the back without consuming it.
@@ -188,7 +189,7 @@ impl<'a> NibbleIterator<'a> {
         if self.front >= self.back {
             return None;
         }
-        Some(Self::nibble_at(self.back - 1, self.bytes[(self.back - 1) / 2]))
+        Some(Self::nibble_at(self.back - 1, self.bytes[(self.back - 1) >> 1]))
     }
 
     /// Extract the nibble at the given nibble-index from a byte.
@@ -219,11 +220,6 @@ impl<'a> Iterator for NibbleIterator<'a> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         let rem = self.back - self.front;
         (rem, Some(rem))
-    }
-
-    #[inline]
-    fn count(self) -> usize {
-        self.back - self.front
     }
 
     #[inline]
@@ -296,9 +292,8 @@ impl NibblePathPacked {
     /// View the packed bytes as a slice.
     #[inline]
     #[must_use]
-    pub const fn as_slice(&self) -> &[u8] {
-        // Safety: we only ever write to inner[0..len] and len <= MAX_PACKED_BYTES.
-        unsafe { core::slice::from_raw_parts(self.inner.as_ptr(), self.len) }
+    pub fn as_slice(&self) -> &[u8] {
+        &self.inner[..self.len]
     }
 
     /// Return the number of bytes in the packed result.
@@ -353,6 +348,30 @@ impl fmt::Debug for NibblePathPacked {
     }
 }
 
+/// Pack consecutive nibble pairs from `path` into bytes starting at
+/// `start_nibble`/`start_byte`. Returns the number of bytes written.
+#[inline]
+#[must_use]
+const fn pack_nibble_pairs(
+    path: &[Nibble],
+    start_nibble: usize,
+    start_byte: usize,
+    out: &mut [u8; MAX_PACKED_BYTES],
+) -> usize {
+    let mut ni = start_nibble;
+    let mut bi = start_byte;
+    while ni + 1 < path.len() {
+        out[bi] = (path[ni].0 << 4) | path[ni + 1].0;
+        ni += 2;
+        bi += 1;
+    }
+    if ni < path.len() {
+        out[bi] = path[ni].0 << 4;
+        bi += 1;
+    }
+    bi
+}
+
 /// Encode a nibble path into bytes, applying HP byte-alignment padding.
 ///
 /// If the path has an even number of nibbles, a `0x00` padding nibble is
@@ -375,58 +394,19 @@ pub fn encode_nibble_path_padded(path: &[Nibble]) -> NibblePathPacked {
         path.len(),
     );
 
-    let total_nibbles = if path.is_empty() {
-        // Empty path is vacuously even; add one padding nibble → 1 byte
-        1usize
-    } else if path.len() % 2 == 0 {
-        path.len() + 1
-    } else {
-        path.len()
-    };
-
-    // ceil(total_nibbles / 2)
-    let byte_count = (total_nibbles + 1) >> 1;
-
     let mut inner = [0u8; MAX_PACKED_BYTES];
 
-    if path.is_empty() {
-        // Single padding nibble → one byte: 0x00 in high position
+    let byte_count = if path.is_empty() {
         inner[0] = 0x00;
+        1
     } else if path.len() % 2 == 0 {
-        // Even path: prepend 0x00 padding nibble, pair with path[0]
         inner[0] = path[0].0;
-        let mut nibble_idx = 1;
-        let mut byte_idx = 1;
-
-        while nibble_idx + 1 < path.len() {
-            inner[byte_idx] = (path[nibble_idx].0 << 4) | path[nibble_idx + 1].0;
-            nibble_idx += 2;
-            byte_idx += 1;
-        }
-
-        if nibble_idx < path.len() {
-            inner[byte_idx] = path[nibble_idx].0 << 4;
-        }
+        pack_nibble_pairs(path, 1, 1, &mut inner)
     } else {
-        // Odd path: pack nibbles directly
-        let mut nibble_idx = 0;
-        let mut byte_idx = 0;
+        pack_nibble_pairs(path, 0, 0, &mut inner)
+    };
 
-        while nibble_idx + 1 < path.len() {
-            inner[byte_idx] = (path[nibble_idx].0 << 4) | path[nibble_idx + 1].0;
-            nibble_idx += 2;
-            byte_idx += 1;
-        }
-
-        if nibble_idx < path.len() {
-            inner[byte_idx] = path[nibble_idx].0 << 4;
-        }
-    }
-
-    NibblePathPacked {
-        inner,
-        len: byte_count,
-    }
+    NibblePathPacked { inner, len: byte_count }
 }
 
 // ============================================================
@@ -693,10 +673,7 @@ mod tests {
     fn iter_count_returns_remaining() {
         let bytes = [0x00, 0x11];
         let it = NibbleIterator::new(&bytes);
-        // count(self) on a Copy iterator does not consume the original
-        assert_eq!(it.count(), 4);
         assert_eq!(it.len(), 4);
-        // The original iterator is still valid (Copy semantics)
         assert_eq!(it.count(), 4);
     }
 
