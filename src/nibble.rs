@@ -193,10 +193,8 @@ impl<'a> NibbleIterator<'a> {
         if self.front >= self.back {
             return None;
         }
-        Some(Self::nibble_at(
-            self.back - 1,
-            self.bytes[(self.back - 1) >> 1],
-        ))
+        let i = self.back - 1;
+        Some(Self::nibble_at(i, self.bytes[i >> 1]))
     }
 
     /// Extract the nibble at the given nibble-index from a byte.
@@ -288,13 +286,13 @@ impl FusedIterator for NibbleIterator<'_> {}
 /// Maximum number of bytes needed for a packed nibble path.
 ///
 /// 64 nibbles (from a 32-byte hash) + 1 HP padding nibble = 65 nibbles = 33 bytes.
-const MAX_PACKED_BYTES: usize = 33;
+pub const MAX_PACKED_BYTES: usize = 33;
 
 /// The result of packing a nibble path into bytes with optional HP padding.
 ///
 /// The maximum input is 64 nibbles (from a 32-byte hash). With HP padding
 /// (one extra nibble for even-length paths) the maximum output is [`MAX_PACKED_BYTES`] bytes.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NibblePathPacked {
     inner: [u8; MAX_PACKED_BYTES],
     len: usize,
