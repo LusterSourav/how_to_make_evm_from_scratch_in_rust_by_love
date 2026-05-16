@@ -19,7 +19,11 @@ impl Nibble {
     #[inline]
     #[must_use]
     pub const fn new(val: u8) -> Option<Self> {
-        if val < 16 { Some(Self(val)) } else { None }
+        if val < 16 {
+            Some(Self(val))
+        } else {
+            None
+        }
     }
 
     /// Create a new `Nibble` without a range check.
@@ -42,22 +46,22 @@ impl Nibble {
     #[inline]
     #[must_use]
     pub fn to_hex_char(self) -> char {
-        match self.0 {
-            0..=9 => (b'0' + self.0) as char,
-            10..=15 => (b'a' + self.0 - 10) as char,
-            _ => unreachable!(),
-        }
+        char::from(if self.0 < 10 {
+            b'0' + self.0
+        } else {
+            b'a' + self.0 - 10
+        })
     }
 
     /// Return the nibble as an uppercase hexadecimal character.
     #[inline]
     #[must_use]
     pub fn to_hex_char_upper(self) -> char {
-        match self.0 {
-            0..=9 => (b'0' + self.0) as char,
-            10..=15 => (b'A' + self.0 - 10) as char,
-            _ => unreachable!(),
-        }
+        char::from(if self.0 < 10 {
+            b'0' + self.0
+        } else {
+            b'A' + self.0 - 10
+        })
     }
 }
 
@@ -87,7 +91,7 @@ impl fmt::UpperHex for Nibble {
 
 impl From<Nibble> for u8 {
     #[inline]
-    fn from(n: Nibble) -> u8 {
+    fn from(n: Nibble) -> Self {
         n.0
     }
 }
@@ -189,12 +193,15 @@ impl<'a> NibbleIterator<'a> {
         if self.front >= self.back {
             return None;
         }
-        Some(Self::nibble_at(self.back - 1, self.bytes[(self.back - 1) >> 1]))
+        Some(Self::nibble_at(
+            self.back - 1,
+            self.bytes[(self.back - 1) >> 1],
+        ))
     }
 
     /// Extract the nibble at the given nibble-index from a byte.
     #[inline]
-    fn nibble_at(idx: usize, byte: u8) -> Nibble {
+    const fn nibble_at(idx: usize, byte: u8) -> Nibble {
         if idx & 1 == 0 {
             high_nibble(byte)
         } else {
@@ -203,6 +210,7 @@ impl<'a> NibbleIterator<'a> {
     }
 }
 
+#[allow(clippy::copy_iterator)]
 impl Iterator for NibbleIterator<'_> {
     type Item = Nibble;
 
@@ -227,7 +235,10 @@ impl Iterator for NibbleIterator<'_> {
         if self.front >= self.back {
             return None;
         }
-        Some(Self::nibble_at(self.back - 1, self.bytes[(self.back - 1) >> 1]))
+        Some(Self::nibble_at(
+            self.back - 1,
+            self.bytes[(self.back - 1) >> 1],
+        ))
     }
 
     #[inline]
@@ -283,6 +294,7 @@ const MAX_PACKED_BYTES: usize = 33;
 ///
 /// The maximum input is 64 nibbles (from a 32-byte hash). With HP padding
 /// (one extra nibble for even-length paths) the maximum output is [`MAX_PACKED_BYTES`] bytes.
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct NibblePathPacked {
     inner: [u8; MAX_PACKED_BYTES],
     len: usize,
@@ -397,7 +409,8 @@ pub fn encode_nibble_path_padded(path: &[Nibble]) -> NibblePathPacked {
     let mut inner = [0u8; MAX_PACKED_BYTES];
 
     let byte_count = if path.is_empty() {
-        inner[0] = 0x00;
+        // inner[0] is already 0x00 from initialization; documented explicitly
+        // to show the intent: a single zero byte representing the padding nibble.
         1
     } else if path.len() % 2 == 0 {
         inner[0] = path[0].0;
@@ -406,7 +419,10 @@ pub fn encode_nibble_path_padded(path: &[Nibble]) -> NibblePathPacked {
         pack_nibble_pairs(path, 0, 0, &mut inner)
     };
 
-    NibblePathPacked { inner, len: byte_count }
+    NibblePathPacked {
+        inner,
+        len: byte_count,
+    }
 }
 
 // ============================================================
@@ -426,7 +442,10 @@ mod tests {
 
     impl FmtBuffer {
         fn new() -> Self {
-            Self { buf: [0u8; 256], len: 0 }
+            Self {
+                buf: [0u8; 256],
+                len: 0,
+            }
         }
 
         fn as_str(&self) -> &str {
@@ -576,8 +595,7 @@ mod tests {
 
     #[test]
     fn nibble_roundtrip() {
-        for byte in 0..=255u16 {
-            let b = byte as u8;
+        for b in 0..=u8::MAX {
             let [hi, lo] = from_byte(b);
             let reconstructed = nibbles_to_byte(hi, lo);
             assert_eq!(reconstructed, b, "roundtrip failed for byte 0x{b:02x}");
@@ -586,9 +604,18 @@ mod tests {
 
     #[test]
     fn nibbles_to_byte_combines() {
-        assert_eq!(nibbles_to_byte(Nibble::new(0xA).unwrap(), Nibble::new(0xB).unwrap()), 0xAB);
-        assert_eq!(nibbles_to_byte(Nibble::new(0x0).unwrap(), Nibble::new(0x0).unwrap()), 0x00);
-        assert_eq!(nibbles_to_byte(Nibble::new(0xF).unwrap(), Nibble::new(0xF).unwrap()), 0xFF);
+        assert_eq!(
+            nibbles_to_byte(Nibble::new(0xA).unwrap(), Nibble::new(0xB).unwrap()),
+            0xAB
+        );
+        assert_eq!(
+            nibbles_to_byte(Nibble::new(0x0).unwrap(), Nibble::new(0x0).unwrap()),
+            0x00
+        );
+        assert_eq!(
+            nibbles_to_byte(Nibble::new(0xF).unwrap(), Nibble::new(0xF).unwrap()),
+            0xFF
+        );
     }
 
     // --------------------------------------------------------
@@ -655,11 +682,16 @@ mod tests {
     #[test]
     fn iter_nth() {
         let bytes = [0xAB, 0xCD, 0xEF];
-        assert_eq!(NibbleIterator::new(&bytes).next().unwrap().as_u8(), 0xA);
+        // Isolated nth from start
         assert_eq!(NibbleIterator::new(&bytes).nth(1).unwrap().as_u8(), 0xB);
-        assert_eq!(NibbleIterator::new(&bytes).nth(2).unwrap().as_u8(), 0xC);
         assert_eq!(NibbleIterator::new(&bytes).nth(5).unwrap().as_u8(), 0xF);
         assert!(NibbleIterator::new(&bytes).nth(6).is_none());
+        // Sequential nth advances cursor correctly
+        let mut it = NibbleIterator::new(&bytes);
+        assert_eq!(it.nth(2).unwrap().as_u8(), 0xC);
+        assert_eq!(it.nth(1).unwrap().as_u8(), 0xE);
+        assert_eq!(it.next().unwrap().as_u8(), 0xF);
+        assert!(it.next().is_none());
     }
 
     #[test]
@@ -715,12 +747,12 @@ mod tests {
     fn iter_mixed_direction() {
         let bytes = [0xAB, 0xCD, 0xEF];
         let mut it = NibbleIterator::new(&bytes);
-        assert_eq!(it.next().unwrap().as_u8(), 0xA);             // front → 0
-        assert_eq!(it.next_back().unwrap().as_u8(), 0xF);        // back ← 5
-        assert_eq!(it.next_back().unwrap().as_u8(), 0xE);        // back ← 4
-        assert_eq!(it.next().unwrap().as_u8(), 0xB);             // front → 1
-        assert_eq!(it.next_back().unwrap().as_u8(), 0xD);        // back ← 3
-        assert_eq!(it.next().unwrap().as_u8(), 0xC);             // front → 2
+        assert_eq!(it.next().unwrap().as_u8(), 0xA); // front → 0
+        assert_eq!(it.next_back().unwrap().as_u8(), 0xF); // back ← 5
+        assert_eq!(it.next_back().unwrap().as_u8(), 0xE); // back ← 4
+        assert_eq!(it.next().unwrap().as_u8(), 0xB); // front → 1
+        assert_eq!(it.next_back().unwrap().as_u8(), 0xD); // back ← 3
+        assert_eq!(it.next().unwrap().as_u8(), 0xC); // front → 2
         assert_eq!(it.next(), None);
         assert_eq!(it.next_back(), None);
     }
@@ -731,7 +763,7 @@ mod tests {
         let mut it = NibbleIterator::new(&bytes);
         assert_eq!(it.peek().unwrap().as_u8(), 0xA);
         assert_eq!(it.peek_back().unwrap().as_u8(), 0xD);
-        assert_eq!(it.next().unwrap().as_u8(), 0xA);  // still consumes
+        assert_eq!(it.next().unwrap().as_u8(), 0xA); // still consumes
         assert_eq!(it.peek().unwrap().as_u8(), 0xB);
         assert_eq!(it.peek_back().unwrap().as_u8(), 0xD);
     }
@@ -743,11 +775,26 @@ mod tests {
     #[test]
     fn iter_nth_back() {
         let bytes = [0xAB, 0xCD, 0xEF];
-        let it = NibbleIterator::new(&bytes);
-        assert_eq!(it.clone().nth_back(0).unwrap().as_u8(), 0xF);
-        assert_eq!(it.clone().nth_back(1).unwrap().as_u8(), 0xE);
-        assert_eq!(it.clone().nth_back(5).unwrap().as_u8(), 0xA);
-        assert!(it.clone().nth_back(6).is_none());
+        // Isolated nth_back from end
+        assert_eq!(
+            NibbleIterator::new(&bytes).nth_back(0).unwrap().as_u8(),
+            0xF
+        );
+        assert_eq!(
+            NibbleIterator::new(&bytes).nth_back(1).unwrap().as_u8(),
+            0xE
+        );
+        assert_eq!(
+            NibbleIterator::new(&bytes).nth_back(5).unwrap().as_u8(),
+            0xA
+        );
+        assert!(NibbleIterator::new(&bytes).nth_back(6).is_none());
+        // Sequential nth_back advances cursor correctly
+        let mut it = NibbleIterator::new(&bytes);
+        assert_eq!(it.nth_back(2).unwrap().as_u8(), 0xD);
+        assert_eq!(it.nth_back(1).unwrap().as_u8(), 0xB);
+        assert_eq!(it.nth_back(0).unwrap().as_u8(), 0xA);
+        assert!(it.nth_back(0).is_none());
     }
 
     // --------------------------------------------------------
@@ -867,7 +914,10 @@ mod tests {
         for i in 1..32 {
             assert_eq!(packed[i], 0xFF, "byte {i} mismatch");
         }
-        assert_eq!(packed[32], 0xF0, "last byte holds trailing nibble in high position");
+        assert_eq!(
+            packed[32], 0xF0,
+            "last byte holds trailing nibble in high position"
+        );
     }
 
     #[test]
@@ -904,7 +954,7 @@ mod tests {
     }
 
     #[test]
-    fn packed_is_empty() {
+    fn packed_empty_path_is_one_byte() {
         let path = [];
         let packed = encode_nibble_path_padded(&path);
         assert!(!packed.is_empty());

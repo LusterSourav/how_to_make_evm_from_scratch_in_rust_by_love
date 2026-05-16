@@ -17,14 +17,14 @@ pub mod types;
 #[cfg(feature = "runtime")]
 pub mod lang_items;
 
-pub use nibble::Nibble;
-pub use nibble::NibbleIterator;
-pub use nibble::NibblePathPacked;
 pub use nibble::encode_nibble_path_padded;
 pub use nibble::from_byte;
 pub use nibble::high_nibble;
 pub use nibble::low_nibble;
 pub use nibble::nibbles_to_byte;
+pub use nibble::Nibble;
+pub use nibble::NibbleIterator;
+pub use nibble::NibblePathPacked;
 pub use types::U256;
 pub use types::U256_MAX;
 pub use types::U512;
