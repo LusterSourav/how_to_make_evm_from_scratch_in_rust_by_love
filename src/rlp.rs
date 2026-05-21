@@ -12,7 +12,6 @@
 // Strict minimalism: integers must be big-endian with no leading zeros.
 // Reference: Ethereum Yellow Paper, Appendix B
 
-extern crate alloc;
 use alloc::vec::Vec;
 
 // ============================================================
@@ -41,6 +40,10 @@ pub enum RlpError {
     LeadingZeros,
     /// Unrecognized prefix byte.
     UnknownPrefix,
+    /// Input contains trailing data after the decoded item.
+    TrailingData,
+    /// Decoding exceeded maximum nesting depth.
+    TooDeep,
 }
 
 // ============================================================
@@ -122,20 +125,47 @@ pub fn encode_list(items: &[&[u8]]) -> Vec<u8> {
 #[must_use]
 pub fn encode_list_from_iter<'a>(items: impl IntoIterator<Item = &'a [u8]>) -> Vec<u8> {
     let collected: Vec<&[u8]> = items.into_iter().collect();
-    encode_list(&collected)
+    let total_len: usize = collected.iter().map(|item| item.len()).sum();
+    let mut out = Vec::with_capacity(1 + collected.len().max(9) + total_len);
+    encode_length(total_len, 0xc0, &mut out);
+    for item in &collected {
+        out.extend_from_slice(item);
+    }
+    out
 }
 
 // ============================================================
 // Decoding — public API
 // ============================================================
 
+/// Maximum allowed nesting depth for RLP decoding.
+const MAX_DECODE_DEPTH: usize = 128;
+
 /// Decode a single RLP item from `input`.
+///
+/// Returns an error if trailing data remains after decoding.
+pub fn decode_strict(input: &[u8]) -> Result<RlpItem, RlpError> {
+    let (item, consumed) = decode_item(input, 0, 0)?;
+    if consumed != input.len() {
+        return Err(RlpError::TrailingData);
+    }
+    Ok(item)
+}
+
+/// Decode a single RLP item from `input`.
+///
+/// Silently ignores any trailing data after the decoded item.
+/// For consensus-critical parsing, use `decode_strict` instead.
 pub fn decode(input: &[u8]) -> Result<RlpItem, RlpError> {
-    decode_item(input, 0).map(|(item, _consumed)| item)
+    decode_item(input, 0, 0).map(|(item, _consumed)| item)
 }
 
 /// Internal recursive decoder. Returns (item, bytes_consumed).
-fn decode_item(input: &[u8], offset: usize) -> Result<(RlpItem, usize), RlpError> {
+fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, usize), RlpError> {
+    if depth > MAX_DECODE_DEPTH {
+        return Err(RlpError::TooDeep);
+    }
+
     if offset >= input.len() {
         return Err(RlpError::Truncated);
     }
@@ -189,7 +219,15 @@ fn decode_item(input: &[u8], offset: usize) -> Result<(RlpItem, usize), RlpError
         if offset + 1 + payload_len > input.len() {
             return Err(RlpError::Truncated);
         }
-        let items = decode_list_items(&input[offset + 1..offset + 1 + payload_len])?;
+        let payload = &input[offset + 1..offset + 1 + payload_len];
+        let depth = depth + 1;
+        let mut items = Vec::new();
+        let mut inner_offset = 0;
+        while inner_offset < payload.len() {
+            let (item, consumed) = decode_item(payload, inner_offset, depth)?;
+            items.push(item);
+            inner_offset += consumed;
+        }
         return Ok((RlpItem::List(items), 1 + payload_len));
     }
 
@@ -206,25 +244,19 @@ fn decode_item(input: &[u8], offset: usize) -> Result<(RlpItem, usize), RlpError
     if offset + 1 + len_of_len + payload_len > input.len() {
         return Err(RlpError::Truncated);
     }
-    let items = decode_list_items(
-        &input[offset + 1 + len_of_len..offset + 1 + len_of_len + payload_len],
-    )?;
+    let payload = &input[offset + 1 + len_of_len..offset + 1 + len_of_len + payload_len];
+    let depth = depth + 1;
+    let mut items = Vec::new();
+    let mut inner_offset = 0;
+    while inner_offset < payload.len() {
+        let (item, consumed) = decode_item(payload, inner_offset, depth)?;
+        items.push(item);
+        inner_offset += consumed;
+    }
     Ok((
         RlpItem::List(items),
         1 + len_of_len + payload_len,
     ))
-}
-
-/// Decode the items within a list payload.
-fn decode_list_items(payload: &[u8]) -> Result<Vec<RlpItem>, RlpError> {
-    let mut items = Vec::new();
-    let mut offset = 0;
-    while offset < payload.len() {
-        let (item, consumed) = decode_item(payload, offset)?;
-        items.push(item);
-        offset += consumed;
-    }
-    Ok(items)
 }
 
 // ============================================================
@@ -536,6 +568,68 @@ mod tests {
         let encoded = [0xb9]; // claims 2-byte length, but no length follows
         let result = decode(&encoded);
         assert_eq!(result, Err(RlpError::Truncated));
+    }
+
+    // --------------------------------------------------------
+    // Strict decoding with trailing data checks
+    // --------------------------------------------------------
+
+    #[test]
+    fn decode_strict_accepts_exact_input() {
+        let encoded = hex("83646f67");
+        let item = decode_strict(&encoded).unwrap();
+        assert_eq!(item, RlpItem::Str(b"dog"));
+    }
+
+    #[test]
+    fn decode_strict_rejects_trailing_data() {
+        // Valid empty list followed by garbage byte
+        let encoded = [0xc0, 0xde, 0xad];
+        let result = decode_strict(&encoded);
+        assert_eq!(result, Err(RlpError::TrailingData));
+    }
+
+    #[test]
+    fn decode_ignores_trailing_data() {
+        // decode (non-strict) should still work with trailing garbage
+        let encoded = [0xc0, 0xde, 0xad];
+        let item = decode(&encoded).unwrap();
+        assert_eq!(item, RlpItem::List(alloc::vec![]));
+    }
+
+    // --------------------------------------------------------
+    // Recursion depth limits
+    // --------------------------------------------------------
+
+    #[test]
+    fn decode_too_deep_nesting() {
+        let mut encoded = alloc::vec![0xc0u8];
+        for _ in 0..MAX_DECODE_DEPTH + 10 {
+            let payload_len = encoded.len();
+            let mut outer = Vec::new();
+            if payload_len < 56 {
+                outer.push(0xc0 + payload_len as u8);
+            } else {
+                let (len_bytes, len_len) = usize_to_be_bytes(payload_len);
+                outer.push(0xf7 + len_len as u8);
+                outer.extend_from_slice(&len_bytes[8 - len_len..]);
+            }
+            outer.extend_from_slice(&encoded);
+            encoded = outer;
+        }
+        let result = decode_strict(&encoded);
+        assert_eq!(result, Err(RlpError::TooDeep));
+    }
+
+    #[test]
+    fn decode_acceptable_nesting() {
+        let inner = encode_list(&[]);
+        let mut encoded = encode_list(&[&inner]);
+        for _ in 0..10 {
+            encoded = encode_list(&[&encoded]);
+        }
+        let result = decode_strict(&encoded);
+        assert!(result.is_ok());
     }
 
     // --------------------------------------------------------

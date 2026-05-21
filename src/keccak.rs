@@ -6,8 +6,6 @@
 //
 // Reference: Keccak Reference v3.0, https://keccak.team/files/Keccak-reference-3.0.pdf
 
-extern crate alloc;
-
 // ============================================================
 // Constants
 // ============================================================
@@ -133,12 +131,6 @@ fn keccak_f(state: &mut [[u64; 5]; 5]) {
 // Byte ↔ lane helpers
 // ============================================================
 
-/// XOR a full rate-sized block (136 bytes) into the state.
-#[inline]
-fn xor_block(state: &mut [[u64; 5]; 5], block: &[u8; RATE]) {
-    xor_block_slice(state, block);
-}
-
 /// XOR an arbitrary-length byte slice into the state (up to RATE bytes).
 ///
 /// Panics if `block` is longer than `RATE`.
@@ -206,7 +198,7 @@ pub fn keccak256(input: &[u8]) -> [u8; 32] {
         block[RATE - 1] ^= 0x80;
     }
 
-    xor_block(&mut state, &block);
+    xor_block_slice(&mut state, &block);
     keccak_f(&mut state);
 
     // --- Squeeze first 32 bytes ---
@@ -252,6 +244,30 @@ mod tests {
     fn keccak256_single_zero_byte() {
         let result = keccak256(&[0x00]);
         let expected = hex_decode("bc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a");
+        assert_eq!(&result[..], &expected[..]);
+    }
+
+    #[test]
+    fn keccak256_exactly_one_rate_block() {
+        let input = [0xCDu8; 136];
+        let result = keccak256(&input);
+        let expected = hex_decode("3be6532e147b1dc38de2cb305106adde45ad85988df254fbb75e59ebf22c9e9e");
+        assert_eq!(&result[..], &expected[..]);
+    }
+
+    #[test]
+    fn keccak256_multi_block() {
+        let input = [0xEFu8; 137];
+        let result = keccak256(&input);
+        let expected = hex_decode("33f09e00bf342dddaa91960d0b1986b140abe454e5aa66a0528df83e2fdef47a");
+        assert_eq!(&result[..], &expected[..]);
+    }
+
+    #[test]
+    fn keccak256_padding_at_last_byte() {
+        let input = [0xABu8; 135];
+        let result = keccak256(&input);
+        let expected = hex_decode("932fedc0e854cc4d32eec69e896c7449570052b3aaceacff7b13745325e4cf47");
         assert_eq!(&result[..], &expected[..]);
     }
 }
