@@ -39,8 +39,6 @@ pub enum RlpError {
     InvalidLength,
     /// Leading zeros in an integer encoding (strict minimalism violation).
     LeadingZeros,
-    /// Data remains after decoding the expected number of items.
-    TrailingData,
     /// Unrecognized prefix byte.
     UnknownPrefix,
 }
@@ -232,10 +230,13 @@ fn decode_list_items(payload: &[u8]) -> Result<Vec<RlpItem>, RlpError> {
 // ============================================================
 
 /// Convert a big-endian byte slice to a usize.
+///
+/// On 32-bit targets, silently saturates at `usize::MAX` if the input exceeds
+/// 4 bytes (theoretical; Ethereum RLP never approaches such sizes).
 fn be_bytes_to_usize(bytes: &[u8]) -> usize {
     let mut result = 0usize;
     for &b in bytes {
-        result = (result << 8) | b as usize;
+        result = result.saturating_mul(256).saturating_add(b as usize);
     }
     result
 }
@@ -455,28 +456,12 @@ mod tests {
     }
 
     #[test]
-    fn reject_short_form_when_long_needed() {
-        // For a 100-byte string: short form is impossible
-        let mut encoded = alloc::vec![0xb8, 100];  // b8 = 0xb7 + 1, 100 = length
-        encoded.extend_from_slice(&[0x00u8; 100]);
-        // This is the correct long form
-
-        // But if we use 0x80 + 100 = 0xe4 as prefix...
-        // Actually 0xe4 is 228, which falls in the list range...
-        // Let's test that lengths < 56 are rejected in long form
-        let mut long_short = alloc::vec![0xb8, 55];  // claims length 55 with long form prefix
-        long_short.extend_from_slice(&[0x00u8; 55]);
-        let _result = decode(&long_short);
-        // Length 55 should use short form, so this should be... hmm
-        // Actually the decoder can't distinguish. Let me check.
-        // The long form for a 55-byte string would be:
-        // 0xb8, 55, then 55 bytes of data.
-        // The short form would be:
-        // 0xb7, then 55 bytes of data.
-        // Both decode to a 55-byte string. The long form is not minimal
-        // but it's not invalid per se. The Yellow Paper says codes to
-        // be minimal, but doesn't say decoders must reject non-minimal.
-        // Let's skip this test.
+    fn reject_long_form_when_short_possible() {
+        // 0xb8 + 55 means "long form string of length 55 with 1-byte length"
+        // Length < 56 must use short form (0xb7 + 55 bytes)
+        let mut encoded = alloc::vec![0xb8, 55];
+        encoded.extend_from_slice(&[0x00u8; 55]);
+        assert_eq!(decode(&encoded), Err(RlpError::InvalidLength));
     }
 
     #[test]

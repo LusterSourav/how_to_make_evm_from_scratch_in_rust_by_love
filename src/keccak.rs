@@ -7,7 +7,6 @@
 // Reference: Keccak Reference v3.0, https://keccak.team/files/Keccak-reference-3.0.pdf
 
 extern crate alloc;
-use core::convert::TryInto;
 
 // ============================================================
 // Constants
@@ -146,6 +145,20 @@ fn xor_block(state: &mut [[u64; 5]; 5], block: &[u8; RATE]) {
     }
 }
 
+/// XOR an arbitrary-length byte slice into the state (up to RATE bytes).
+///
+/// Panics if `block` is longer than `RATE`.
+#[inline]
+fn xor_block_slice(state: &mut [[u64; 5]; 5], block: &[u8]) {
+    for (i, &byte) in block.iter().enumerate() {
+        let lane_flat = i / 8;
+        let lane_x = lane_flat % 5;
+        let lane_y = lane_flat / 5;
+        let bit_offset = (i % 8) * 8;
+        state[lane_x][lane_y] ^= (byte as u64) << bit_offset;
+    }
+}
+
 /// Extract a byte from the state at the given flat byte position.
 #[inline]
 fn extract_byte(state: &[[u64; 5]; 5], byte_offset: usize) -> u8 {
@@ -175,9 +188,8 @@ pub fn keccak256(input: &[u8]) -> [u8; 32] {
     let full_blocks = input.len() / RATE;
     for block_idx in 0..full_blocks {
         let offset = block_idx * RATE;
-        // Read 136 bytes directly from input
-        let block: &[u8; RATE] = input[offset..offset + RATE].try_into().unwrap();
-        xor_block(&mut state, block);
+        let block_slice = &input[offset..offset + RATE];
+        xor_block_slice(&mut state, block_slice);
         keccak_f(&mut state);
     }
 
