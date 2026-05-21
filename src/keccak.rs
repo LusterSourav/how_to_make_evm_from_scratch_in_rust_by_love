@@ -72,7 +72,7 @@ const fn pi_dest(x: usize, y: usize) -> (usize, usize) {
 /// The state is a 5 × 5 matrix of 64-bit lanes stored as `[[u64; 5]; 5]`
 /// where `state[col][row]` gives the lane at column `col`, row `row`.
 fn keccak_f(state: &mut [[u64; 5]; 5]) {
-    for round in 0..24 {
+    for rc in RC.iter() {
         // --- θ (Theta): column parity mixing ---
         // Compute column parities
         let mut c = [0u64; 5];
@@ -125,7 +125,7 @@ fn keccak_f(state: &mut [[u64; 5]; 5]) {
         }
 
         // --- ι (Iota): round constant injection ---
-        state[0][0] ^= RC[round];
+        state[0][0] ^= rc;
     }
 }
 
@@ -136,13 +136,7 @@ fn keccak_f(state: &mut [[u64; 5]; 5]) {
 /// XOR a full rate-sized block (136 bytes) into the state.
 #[inline]
 fn xor_block(state: &mut [[u64; 5]; 5], block: &[u8; RATE]) {
-    for (i, &byte) in block.iter().enumerate() {
-        let lane_flat = i / 8;
-        let lane_x = lane_flat % 5;
-        let lane_y = lane_flat / 5;
-        let bit_offset = (i % 8) * 8;
-        state[lane_x][lane_y] ^= (byte as u64) << bit_offset;
-    }
+    xor_block_slice(state, block);
 }
 
 /// XOR an arbitrary-length byte slice into the state (up to RATE bytes).
@@ -150,6 +144,7 @@ fn xor_block(state: &mut [[u64; 5]; 5], block: &[u8; RATE]) {
 /// Panics if `block` is longer than `RATE`.
 #[inline]
 fn xor_block_slice(state: &mut [[u64; 5]; 5], block: &[u8]) {
+    debug_assert!(block.len() <= RATE, "xor_block_slice: block length {} exceeds RATE {}", block.len(), RATE);
     for (i, &byte) in block.iter().enumerate() {
         let lane_flat = i / 8;
         let lane_x = lane_flat % 5;
@@ -216,8 +211,8 @@ pub fn keccak256(input: &[u8]) -> [u8; 32] {
 
     // --- Squeeze first 32 bytes ---
     let mut output = [0u8; 32];
-    for i in 0..32 {
-        output[i] = extract_byte(&state, i);
+    for (i, byte) in output.iter_mut().enumerate() {
+        *byte = extract_byte(&state, i);
     }
 
     output

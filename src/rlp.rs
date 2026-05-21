@@ -56,24 +56,26 @@ fn encode_length(len: usize, prefix: u8, out: &mut Vec<u8>) {
         out.push(prefix + len as u8);
     } else {
         // Long form: prefix + 55 + len_of_len || len
-        let len_bytes = usize_to_be_bytes(len);
-        out.push(prefix + 55 + len_bytes.len() as u8);
-        out.extend_from_slice(&len_bytes);
+        let (len_bytes, len_len) = usize_to_be_bytes(len);
+        out.push(prefix + 55 + len_len as u8);
+        out.extend_from_slice(&len_bytes[8 - len_len..]);
     }
 }
 
 /// Convert a `usize` to its big-endian byte representation with no leading zeros.
-fn usize_to_be_bytes(mut n: usize) -> Vec<u8> {
+/// Returns (bytes_array, length) to avoid heap allocation.
+fn usize_to_be_bytes(mut n: usize) -> ([u8; 8], usize) {
     if n == 0 {
-        return alloc::vec![0u8];
+        return ([0u8; 8], 1);
     }
-    let mut bytes = Vec::new();
+    let mut bytes = [0u8; 8];
+    let mut i = 8;
     while n > 0 {
-        bytes.push((n & 0xFF) as u8);
+        i -= 1;
+        bytes[i] = (n & 0xFF) as u8;
         n >>= 8;
     }
-    bytes.reverse();
-    bytes
+    (bytes, 8 - i)
 }
 
 // ============================================================
@@ -493,7 +495,7 @@ mod tests {
         for input in test_cases {
             let encoded = encode_str(input);
             let decoded = decode(&encoded).unwrap();
-            assert_eq!(decoded, RlpItem::Str(*input), "failed for {input:?}");
+            assert_eq!(decoded, RlpItem::Str(input), "failed for {input:?}");
         }
     }
 
@@ -509,11 +511,10 @@ mod tests {
             let refs: Vec<&[u8]> = items.iter().map(|v| v.as_slice()).collect();
             let encoded = encode_list(&refs);
             let decoded = decode(&encoded).unwrap();
-            if let RlpItem::List(decoded_items) = decoded {
-                assert_eq!(decoded_items.len(), items.len());
-            } else {
-                panic!("Expected list");
-            }
+            let expected_items: Vec<RlpItem> = items.iter()
+                .map(|encoded| decode(encoded).unwrap())
+                .collect();
+            assert_eq!(decoded, RlpItem::List(expected_items));
         }
     }
 
