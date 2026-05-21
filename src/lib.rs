@@ -10,13 +10,16 @@
 #![no_std]
 #![cfg_attr(feature = "runtime", feature(alloc_error_handler))]
 
+pub mod keccak;
 pub mod nibble;
 pub mod ops;
+pub mod rlp;
 pub mod types;
 
 #[cfg(feature = "runtime")]
 pub mod lang_items;
 
+pub use keccak::keccak256;
 pub use nibble::encode_nibble_path_padded;
 pub use nibble::from_byte;
 pub use nibble::high_nibble;

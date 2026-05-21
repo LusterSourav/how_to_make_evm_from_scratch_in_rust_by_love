@@ -66,6 +66,16 @@ impl U256 {
         bytes
     }
 
+    /// Return the big-endian byte representation.
+    /// The least-significant limb (limbs[0]) becomes the trailing bytes,
+    /// and the most-significant limb (limbs[3]) becomes the leading bytes.
+    #[must_use]
+    pub fn to_bytes_be(&self) -> [u8; 32] {
+        let mut bytes = self.to_bytes_le();
+        bytes.reverse();
+        bytes
+    }
+
     #[must_use]
     pub fn from_bytes_le(bytes: [u8; 32]) -> Self {
         let mut limbs = [0u64; 4];
@@ -195,7 +205,9 @@ impl U512 {
 
     #[must_use]
     pub const fn from_u256_pair(lo: U256, hi: U256) -> Self {
-        Self([lo.0[0], lo.0[1], lo.0[2], lo.0[3], hi.0[0], hi.0[1], hi.0[2], hi.0[3]])
+        Self([
+            lo.0[0], lo.0[1], lo.0[2], lo.0[3], hi.0[0], hi.0[1], hi.0[2], hi.0[3],
+        ])
     }
 
     /// Lower 256 bits as a U256.
