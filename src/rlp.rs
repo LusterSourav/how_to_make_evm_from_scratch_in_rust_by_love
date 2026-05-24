@@ -322,10 +322,7 @@ mod tests {
     use super::*;
 
     fn hex(s: &str) -> Vec<u8> {
-        (0..s.len())
-            .step_by(2)
-            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
-            .collect()
+        hex::decode(s).unwrap()
     }
 
     // --------------------------------------------------------
@@ -693,6 +690,16 @@ mod tests {
         // 0x80 + 17 = 0x91 -> short string
         let mut expected = alloc::vec![0x91, 0x01];
         expected.extend_from_slice(&[0u8; 16]);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn encode_u256_max() {
+        let val = U256([!0u64; 4]);
+        let result = encode_u256(&val);
+        // U256::MAX to_bytes_be = [0xFF; 32], RLP short string = 0xa0 prefix + 32 bytes
+        let mut expected = alloc::vec![0xa0];
+        expected.extend_from_slice(&[0xFFu8; 32]);
         assert_eq!(result, expected);
     }
 }

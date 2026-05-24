@@ -136,7 +136,7 @@ fn keccak_f(state: &mut [[u64; 5]; 5]) {
 /// Panics if `block` is longer than `RATE`.
 #[inline]
 fn xor_block_slice(state: &mut [[u64; 5]; 5], block: &[u8]) {
-    debug_assert!(block.len() <= RATE, "xor_block_slice: block length {} exceeds RATE {}", block.len(), RATE);
+    assert!(block.len() <= RATE, "xor_block_slice: block length {} exceeds RATE {}", block.len(), RATE);
     for (i, &byte) in block.iter().enumerate() {
         let lane_flat = i / 8;
         let lane_x = lane_flat % 5;
@@ -220,10 +220,7 @@ mod tests {
     use alloc::vec::Vec;
 
     fn hex_decode(s: &str) -> Vec<u8> {
-        (0..s.len())
-            .step_by(2)
-            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
-            .collect()
+        hex::decode(s).unwrap()
     }
 
     #[test]
