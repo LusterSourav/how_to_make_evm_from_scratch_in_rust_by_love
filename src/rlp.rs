@@ -32,6 +32,7 @@ pub enum RlpItem<'a> {
 
 /// Errors that can occur during RLP decoding.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum RlpError {
     /// Input is too short to contain the declared payload.
     Truncated,
@@ -611,6 +612,12 @@ mod tests {
         let encoded = [0xc0, 0xde, 0xad];
         let item = decode(&encoded).unwrap();
         assert_eq!(item, RlpItem::List(alloc::vec![]));
+    }
+
+    #[test]
+    fn decode_strict_empty_input() {
+        let result = decode_strict(b"");
+        assert_eq!(result, Err(RlpError::Truncated));
     }
 
     // --------------------------------------------------------
