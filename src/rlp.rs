@@ -221,7 +221,7 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
             // Must use short form for lengths < 56
             return Err(RlpError::InvalidLength);
         }
-        let payload_end = (offset + 1 + len_of_len).checked_add(len).ok_or(RlpError::Truncated)?;
+        let payload_end = (offset + 1 + len_of_len).checked_add(len).ok_or(RlpError::InvalidLength)?;
         if payload_end > input.len() {
             return Err(RlpError::Truncated);
         }
@@ -259,7 +259,7 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
     if payload_len < 56 {
         return Err(RlpError::InvalidLength);
     }
-    let payload_end = (offset + 1 + len_of_len).checked_add(payload_len).ok_or(RlpError::Truncated)?;
+    let payload_end = (offset + 1 + len_of_len).checked_add(payload_len).ok_or(RlpError::InvalidLength)?;
     if payload_end > input.len() {
         return Err(RlpError::Truncated);
     }
@@ -695,6 +695,22 @@ mod tests {
         let mut expected = alloc::vec![0x91, 0x01];
         expected.extend_from_slice(&[0u8; 16]);
         assert_eq!(result, expected);
+    }
+
+    // --------------------------------------------------------
+    // Long-form list encoding (>255 byte payload)
+    // --------------------------------------------------------
+
+    #[test]
+    fn encode_long_list_over_255() {
+        // 256-byte payload → 0xf9 prefix + 2-byte length (0x01, 0x00)
+        let items: Vec<Vec<u8>> = (0..256).map(|_| encode_str(&[0x00])).collect();
+        let refs: Vec<&[u8]> = items.iter().map(|v| v.as_slice()).collect();
+        let result = encode_list(&refs);
+        assert_eq!(result[0], 0xf9);
+        assert_eq!(result[1], 0x01);
+        assert_eq!(result[2], 0x00);
+        assert_eq!(result.len(), 1 + 2 + 256);
     }
 
     #[test]
