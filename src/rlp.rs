@@ -179,7 +179,7 @@ pub fn decode(input: &[u8]) -> Result<RlpItem, RlpError> {
 
 /// Internal recursive decoder. Returns (item, bytes_consumed).
 fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, usize), RlpError> {
-    if depth > MAX_DECODE_DEPTH {
+    if depth >= MAX_DECODE_DEPTH {
         return Err(RlpError::TooDeep);
     }
 
