@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["MAX_PACKED_BYTES"],"fn":["encode_nibble_path_padded","from_byte","high_nibble","low_nibble","nibbles_to_byte"],"struct":["Nibble","NibbleIterator","NibblePathPacked"]};
