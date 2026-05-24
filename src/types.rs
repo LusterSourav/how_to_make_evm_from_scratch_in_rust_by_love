@@ -77,6 +77,13 @@ impl U256 {
     }
 
     #[must_use]
+    pub fn from_bytes_be(bytes: [u8; 32]) -> Self {
+        let mut le = bytes;
+        le.reverse();
+        Self::from_bytes_le(le)
+    }
+
+    #[must_use]
     pub fn from_bytes_le(bytes: [u8; 32]) -> Self {
         let mut limbs = [0u64; 4];
         for i in 0..4 {
