@@ -141,7 +141,7 @@ pub fn encode_list_from_iter<'a>(items: impl IntoIterator<Item = &'a [u8]>) -> V
         total_len += item.len();
         collected.push(item);
     }
-    let mut out = Vec::with_capacity(1 + collected.len().max(9) + total_len);
+    let mut out = Vec::with_capacity(1 + 8 + total_len);
     encode_length(total_len, 0xc0, &mut out);
     for item in &collected {
         out.extend_from_slice(item);
