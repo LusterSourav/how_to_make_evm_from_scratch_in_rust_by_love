@@ -267,4 +267,13 @@ mod tests {
         let expected = hex_decode("932fedc0e854cc4d32eec69e896c7449570052b3aaceacff7b13745325e4cf47");
         assert_eq!(&result[..], &expected[..]);
     }
+
+    #[test]
+    fn keccak256_two_full_blocks() {
+        // 272 = 2 * 136 (RATE), exercises remaining == 0 padding path
+        let input = [0xABu8; 272];
+        let result = keccak256(&input);
+        let expected = hex_decode("0245c297e7ae739cbe32c757a55bdb3064c9e0fdf25941d9496ac21e5efeed35");
+        assert_eq!(&result[..], &expected[..]);
+    }
 }

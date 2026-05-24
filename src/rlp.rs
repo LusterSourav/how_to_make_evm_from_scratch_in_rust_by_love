@@ -45,6 +45,8 @@ pub enum RlpError {
     TooDeep,
 }
 
+impl core::error::Error for RlpError {}
+
 impl fmt::Display for RlpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -219,11 +221,12 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
             // Must use short form for lengths < 56
             return Err(RlpError::InvalidLength);
         }
-        if offset + 1 + len_of_len + len > input.len() {
+        let payload_end = (offset + 1 + len_of_len).checked_add(len).ok_or(RlpError::Truncated)?;
+        if payload_end > input.len() {
             return Err(RlpError::Truncated);
         }
         return Ok((
-            RlpItem::Str(&input[offset + 1 + len_of_len..offset + 1 + len_of_len + len]),
+            RlpItem::Str(&input[offset + 1 + len_of_len..payload_end]),
             1 + len_of_len + len,
         ));
     }
@@ -256,10 +259,11 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
     if payload_len < 56 {
         return Err(RlpError::InvalidLength);
     }
-    if offset + 1 + len_of_len + payload_len > input.len() {
+    let payload_end = (offset + 1 + len_of_len).checked_add(payload_len).ok_or(RlpError::Truncated)?;
+    if payload_end > input.len() {
         return Err(RlpError::Truncated);
     }
-    let payload = &input[offset + 1 + len_of_len..offset + 1 + len_of_len + payload_len];
+    let payload = &input[offset + 1 + len_of_len..payload_end];
     let depth = depth + 1;
     let mut items = Vec::new();
     let mut inner_offset = 0;
