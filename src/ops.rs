@@ -123,10 +123,7 @@ impl U256 {
                 carry = sum >> 64;
                 idx += 1;
             }
-            debug_assert!(
-                carry == 0,
-                "mul_full: carry overflowed past 512 bits"
-            );
+            debug_assert!(carry == 0, "mul_full: carry overflowed past 512 bits");
         }
         U512(res)
     }
@@ -446,8 +443,7 @@ impl U256 {
             let mut borrow: u64 = 0;
 
             for i in 0..m {
-                let product =
-                    u128::from(q_hat) * u128::from(v[i]) + u128::from(k);
+                let product = u128::from(q_hat) * u128::from(v[i]) + u128::from(k);
                 let lo = product as u64;
                 k = (product >> 64) as u64;
 
@@ -468,8 +464,7 @@ impl U256 {
                 q_hat -= 1;
                 let mut add_carry: u64 = 0;
                 for i in 0..m {
-                    let sum =
-                        u128::from(u[j + i]) + u128::from(v[i]) + u128::from(add_carry);
+                    let sum = u128::from(u[j + i]) + u128::from(v[i]) + u128::from(add_carry);
                     u[j + i] = sum as u64;
                     add_carry = (sum >> 64) as u64;
                 }
