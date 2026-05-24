@@ -13,6 +13,7 @@
 // Reference: Ethereum Yellow Paper, Appendix B
 
 use alloc::vec::Vec;
+use core::fmt;
 
 // ============================================================
 // RLP item — decode result
@@ -38,12 +39,22 @@ pub enum RlpError {
     InvalidLength,
     /// Leading zeros in an integer encoding (strict minimalism violation).
     LeadingZeros,
-    /// Unrecognized prefix byte.
-    UnknownPrefix,
     /// Input contains trailing data after the decoded item.
     TrailingData,
     /// Decoding exceeded maximum nesting depth.
     TooDeep,
+}
+
+impl fmt::Display for RlpError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RlpError::Truncated => write!(f, "RLP input truncated"),
+            RlpError::InvalidLength => write!(f, "RLP invalid length prefix"),
+            RlpError::LeadingZeros => write!(f, "RLP leading zeros (non-minimal encoding)"),
+            RlpError::TrailingData => write!(f, "RLP trailing data after decoded item"),
+            RlpError::TooDeep => write!(f, "RLP maximum nesting depth exceeded"),
+        }
+    }
 }
 
 // ============================================================
@@ -124,8 +135,12 @@ pub fn encode_list(items: &[&[u8]]) -> Vec<u8> {
 /// Encode a list from an iterator of (encoded) byte slices.
 #[must_use]
 pub fn encode_list_from_iter<'a>(items: impl IntoIterator<Item = &'a [u8]>) -> Vec<u8> {
-    let collected: Vec<&[u8]> = items.into_iter().collect();
-    let total_len: usize = collected.iter().map(|item| item.len()).sum();
+    let mut collected = Vec::new();
+    let mut total_len = 0usize;
+    for item in items {
+        total_len += item.len();
+        collected.push(item);
+    }
     let mut out = Vec::with_capacity(1 + collected.len().max(9) + total_len);
     encode_length(total_len, 0xc0, &mut out);
     for item in &collected {
