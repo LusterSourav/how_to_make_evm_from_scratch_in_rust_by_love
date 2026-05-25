@@ -16,7 +16,6 @@ use crate::U256;
 pub enum Error {
     Trie(trie::Error),
     Decode,
-    AccountNotFound,
 }
 
 impl From<trie::Error> for Error {
@@ -134,7 +133,11 @@ impl<D: Database> WorldState<D> {
     }
 
     /// Write a storage value. Zero values are stored (removed on commit).
+    /// Auto-creates the account if it doesn't exist (matching Geth behavior).
     pub fn set_storage(&mut self, address: [u8; 20], slot: U256, value: U256) -> Result<(), Error> {
+        if self.get_account(&address)?.is_none() {
+            self.set_account(address, Account::new_empty())?;
+        }
         let old = self.get_storage(&address, &slot)?;
         if old == value {
             return Ok(());
@@ -334,6 +337,9 @@ mod tests {
     #[test]
     fn state_storage_noop() {
         let mut state = WorldState::new(make_db());
+        state.set_account(addr(1), Account::new_empty()).unwrap();
+        state.commit().unwrap();
+        // Setting zero on an empty slot after the account exists should be a no-op
         let slot = U256::from_u64(42);
         state.set_storage(addr(1), slot, U256::zero()).unwrap();
         assert!(state.journal.is_empty());
@@ -422,6 +428,29 @@ mod tests {
     }
 
     #[test]
+    fn state_storage_auto_creates_account() {
+        let mut state = WorldState::new(make_db());
+        let slot = U256::from_u64(1);
+        state
+            .set_storage(addr(1), slot, U256::from_u64(42))
+            .unwrap();
+        let acc = state.get_account(&addr(1)).unwrap().unwrap();
+        assert_eq!(acc.nonce, U256::zero());
+        assert_eq!(
+            state.get_storage(&addr(1), &slot).unwrap(),
+            U256::from_u64(42)
+        );
+        let root = state.commit().unwrap();
+        assert_ne!(root, EMPTY_ROOT_HASH);
+        let acc2 = state.get_account(&addr(1)).unwrap().unwrap();
+        assert_eq!(acc2.nonce, U256::zero());
+        assert_eq!(
+            state.get_storage(&addr(1), &slot).unwrap(),
+            U256::from_u64(42)
+        );
+    }
+
+    #[test]
     fn state_account_delete_before_storage() {
         let mut state = WorldState::new(make_db());
         state.set_account(addr(1), Account::new_empty()).unwrap();
@@ -431,5 +460,46 @@ mod tests {
         state.remove_account(&addr(1)).unwrap();
         let _root = state.commit().unwrap();
         assert_eq!(state.get_account(&addr(1)).unwrap(), None);
+    }
+
+    #[test]
+    fn state_storage_zero_removes_on_commit() {
+        let mut state = WorldState::new(make_db());
+        let slot = U256::from_u64(1);
+
+        state
+            .set_storage(addr(1), slot, U256::from_u64(42))
+            .unwrap();
+        state.set_storage(addr(1), slot, U256::zero()).unwrap();
+        assert_eq!(state.get_storage(&addr(1), &slot).unwrap(), U256::zero());
+
+        let _root = state.commit().unwrap();
+        // After commit, zero-valued storage is removed and defaults to zero
+        assert_eq!(state.get_storage(&addr(1), &slot).unwrap(), U256::zero());
+    }
+
+    #[test]
+    fn state_set_storage_then_remove_account_rollback_restores_storage() {
+        let mut state = WorldState::new(make_db());
+        let slot = U256::from_u64(1);
+
+        state
+            .set_storage(addr(1), slot, U256::from_u64(42))
+            .unwrap();
+        state.commit().unwrap();
+
+        state.checkpoint();
+        state
+            .set_storage(addr(1), slot, U256::from_u64(99))
+            .unwrap();
+        state.remove_account(&addr(1)).unwrap();
+        state.rollback().unwrap();
+
+        let acc = state.get_account(&addr(1)).unwrap().unwrap();
+        assert_eq!(acc.nonce, U256::zero());
+        assert_eq!(
+            state.get_storage(&addr(1), &slot).unwrap(),
+            U256::from_u64(42)
+        );
     }
 }

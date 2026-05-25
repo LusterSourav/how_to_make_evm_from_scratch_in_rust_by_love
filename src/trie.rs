@@ -724,6 +724,7 @@ fn cleanse_branch(
                                 pos += 1;
                             }
                         }
+                        debug_assert!(pos <= MAX_NIBBLES, "branch collapse path overflow");
                         NibbleBuf { inner, len: pos }
                     };
                     Ok(Node::Extension {
@@ -745,6 +746,7 @@ fn cleanse_branch(
                                 pos += 1;
                             }
                         }
+                        debug_assert!(pos <= MAX_NIBBLES, "branch collapse path overflow");
                         NibbleBuf { inner, len: pos }
                     };
                     Ok(Node::Leaf {
@@ -777,6 +779,13 @@ impl NibbleBuf {
     /// Concatenate two nibble paths.
     #[must_use]
     pub fn merge(&self, other: &Self) -> Self {
+        debug_assert!(
+            self.len + other.len <= MAX_NIBBLES,
+            "NibbleBuf::merge overflow: {} + {} > {}",
+            self.len,
+            other.len,
+            MAX_NIBBLES
+        );
         let mut inner = [0u8; MAX_NIBBLES];
         let self_end = min(self.len, MAX_NIBBLES);
         inner[..self_end].copy_from_slice(&self.inner[..self_end]);
