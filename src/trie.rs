@@ -306,7 +306,7 @@ fn decode_ref_from_item(item: &RlpItem) -> Result<NodeRef, Error> {
 // ============================================================
 
 /// RLP-encode a node, store it in the DB, return its reference.
-/// Nodes < 32 bytes are stored in DB and also returned as Inline.
+/// Nodes < 32 bytes are returned as Inline (embedded in the parent node's RLP).
 fn commit_node(db: &mut dyn super::db::Database, node: &Node) -> Result<NodeRef, Error> {
     match node {
         Node::Empty => Ok(NodeRef::Empty),

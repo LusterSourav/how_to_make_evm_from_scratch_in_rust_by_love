@@ -135,17 +135,52 @@ impl<D: Database> WorldState<D> {
     /// Write a storage value. Zero values are stored (removed on commit).
     /// Auto-creates the account if it doesn't exist (matching Geth behavior).
     pub fn set_storage(&mut self, address: [u8; 20], slot: U256, value: U256) -> Result<(), Error> {
-        if self.get_account(&address)?.is_none() {
-            self.set_account(address, Account::new_empty())?;
-        }
-        let old = self.get_storage(&address, &slot)?;
+        // Read the old value before auto-creating the account, so that we
+        // capture the committed value even when the account was deleted from
+        // the cache via a prior remove_account (see read_committed_storage).
+        let old = self.read_committed_storage(&address, &slot)?;
         if old == value {
             return Ok(());
+        }
+        if self.get_account(&address)?.is_none() {
+            self.set_account(address, Account::new_empty())?;
         }
         self.journal
             .push(JournalEntry::StorageChange { address, slot, old });
         self.storage_cache.insert((address, slot), value);
         Ok(())
+    }
+
+    /// Read a storage value bypassing the account-cache `None` entry.
+    /// Needed by [`set_storage`] so that it can capture the committed storage
+    /// value before a deleted account is re-created in the cache.
+    fn read_committed_storage(&self, address: &[u8; 20], slot: &U256) -> Result<U256, Error> {
+        // Check storage cache first (fast path)
+        if let Some(val) = self.storage_cache.get(&(*address, *slot)) {
+            return Ok(*val);
+        }
+        // Check the account trie directly, ignoring the cache's deleted flag
+        let account = {
+            let key = keccak256(address);
+            match self.state_trie.get(&self.db, &key)? {
+                Some(bytes) => {
+                    Account::decode(&bytes).map_err(|_| Error::Decode)?
+                }
+                None => return Ok(U256::zero()),
+            }
+        };
+        if account.storage_root == EMPTY_ROOT_HASH {
+            return Ok(U256::zero());
+        }
+        let storage_trie = Trie::from_root(&self.db, &account.storage_root)?;
+        let slot_hash = keccak256(&slot.to_bytes_be());
+        let raw = match storage_trie.get(&self.db, &slot_hash)? {
+            Some(data) => data,
+            None => return Ok(U256::zero()),
+        };
+        let mut padded = [0u8; 32];
+        padded[32 - raw.len()..].copy_from_slice(&raw);
+        Ok(U256::from_bytes_be(padded))
     }
 
     /// Store contract code.
@@ -493,6 +528,38 @@ mod tests {
             .set_storage(addr(1), slot, U256::from_u64(99))
             .unwrap();
         state.remove_account(&addr(1)).unwrap();
+        state.rollback().unwrap();
+
+        let acc = state.get_account(&addr(1)).unwrap().unwrap();
+        assert_eq!(acc.nonce, U256::zero());
+        assert_eq!(
+            state.get_storage(&addr(1), &slot).unwrap(),
+            U256::from_u64(42)
+        );
+    }
+
+    /// Regression: remove_account then set_storage then rollback should restore
+    /// the committed storage value, not lose it.
+    #[test]
+    fn state_remove_account_then_set_storage_rollback_preserves_storage() {
+        let mut state = WorldState::new(make_db());
+        let slot = U256::from_u64(1);
+
+        // Commit account with storage
+        state.set_storage(addr(1), slot, U256::from_u64(42)).unwrap();
+        state.commit().unwrap();
+        assert_eq!(state.get_storage(&addr(1), &slot).unwrap(), U256::from_u64(42));
+
+        state.checkpoint();
+
+        // Remove the account
+        state.remove_account(&addr(1)).unwrap();
+        assert_eq!(state.get_account(&addr(1)).unwrap(), None);
+
+        // Set storage again (auto-creates account)
+        state.set_storage(addr(1), slot, U256::from_u64(99)).unwrap();
+
+        // Rollback — should restore committed account + storage
         state.rollback().unwrap();
 
         let acc = state.get_account(&addr(1)).unwrap().unwrap();
