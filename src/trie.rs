@@ -307,13 +307,13 @@ fn decode_ref_from_item(item: &RlpItem) -> Result<NodeRef, Error> {
 
 /// RLP-encode a node, store it in the DB, return its reference.
 /// Nodes < 32 bytes are returned as Inline (embedded in the parent node's RLP).
-fn commit_node(db: &mut dyn super::db::Database, node: &Node) -> Result<NodeRef, Error> {
+fn commit_node(db: &mut dyn super::db::Database, node: Node) -> Result<NodeRef, Error> {
     match node {
         Node::Empty => Ok(NodeRef::Empty),
         non_empty => {
-            let rlp = rlp_encode_node(non_empty);
+            let rlp = rlp_encode_node(&non_empty);
             if rlp.len() < 32 {
-                return Ok(NodeRef::Inline(Box::new(non_empty.clone())));
+                return Ok(NodeRef::Inline(Box::new(non_empty)));
             }
             let hash = keccak256(&rlp);
             db.insert(hash, rlp).map_err(|_| Error::Database)?;
@@ -450,7 +450,7 @@ fn insert_internal(
                         value: lv.clone(),
                     }
                 };
-                children[suffix[0] as usize] = Some(Box::new(commit_node(db, &child)?));
+                children[suffix[0] as usize] = Some(Box::new(commit_node(db, child)?));
             } else {
                 branch_value = Some(lv.clone());
             }
@@ -467,7 +467,7 @@ fn insert_internal(
                     let sub_path = &suffix[1..];
                     insert_internal(db, Node::Empty, sub_path, value)?
                 };
-                children[suffix[0] as usize] = Some(Box::new(commit_node(db, &child)?));
+                children[suffix[0] as usize] = Some(Box::new(commit_node(db, child)?));
             } else {
                 branch_value = Some(value);
             }
@@ -481,7 +481,7 @@ fn insert_internal(
             }
             Ok(Node::Extension {
                 path: NibbleBuf::from_nibbles(&path[..common]),
-                child: Box::new(commit_node(db, &branch)?),
+                child: Box::new(commit_node(db, branch)?),
             })
         }
 
@@ -516,7 +516,7 @@ fn insert_internal(
                     },
                     other => Node::Extension {
                         path: *ep,
-                        child: Box::new(commit_node(db, &other)?),
+                        child: Box::new(commit_node(db, other)?),
                     },
                 });
             }
@@ -535,7 +535,7 @@ fn insert_internal(
                         path: NibbleBuf::from_nibbles(&suffix[1..]),
                         child: ec.clone(),
                     };
-                    children[suffix[0] as usize] = Some(Box::new(commit_node(db, &child)?));
+                    children[suffix[0] as usize] = Some(Box::new(commit_node(db, child)?));
                 }
             }
 
@@ -547,7 +547,7 @@ fn insert_internal(
                 } else {
                     insert_internal(db, Node::Empty, &suffix[1..], value)?
                 };
-                children[suffix[0] as usize] = Some(Box::new(commit_node(db, &child)?));
+                children[suffix[0] as usize] = Some(Box::new(commit_node(db, child)?));
             } else {
                 branch_value = Some(value);
             }
@@ -561,7 +561,7 @@ fn insert_internal(
             }
             Ok(Node::Extension {
                 path: NibbleBuf::from_nibbles(&path[..common]),
-                child: Box::new(commit_node(db, &branch)?),
+                child: Box::new(commit_node(db, branch)?),
             })
         }
 
@@ -591,7 +591,7 @@ fn insert_internal(
                 None => Node::Empty,
             };
             let new_child = insert_internal(db, existing, rest, value)?;
-            br_children[nibble] = Some(Box::new(commit_node(db, &new_child)?));
+            br_children[nibble] = Some(Box::new(commit_node(db, new_child)?));
 
             Ok(Node::Branch {
                 children: br_children,
@@ -652,7 +652,7 @@ fn remove_internal(
                     },
                     other => Node::Extension {
                         path: *ep,
-                        child: Box::new(commit_node(db, &other)?),
+                        child: Box::new(commit_node(db, other)?),
                     },
                 });
             }
@@ -692,7 +692,7 @@ fn remove_internal(
             if new_child == Node::Empty {
                 br_children[nibble] = None;
             } else {
-                br_children[nibble] = Some(Box::new(commit_node(db, &new_child)?));
+                br_children[nibble] = Some(Box::new(commit_node(db, new_child)?));
             }
 
             cleanse_branch(db, br_children, br_value)
@@ -755,7 +755,7 @@ fn cleanse_branch(
                     })
                 }
                 other => {
-                    let committed = commit_node(db, &other)?;
+                    let committed = commit_node(db, other)?;
                     Ok(Node::Extension {
                         path: NibbleBuf::from_nibbles(&[idx_byte]),
                         child: Box::new(committed),
