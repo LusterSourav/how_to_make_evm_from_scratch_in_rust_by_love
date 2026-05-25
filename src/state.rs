@@ -137,8 +137,8 @@ impl<D: Database> WorldState<D> {
     pub fn set_storage(&mut self, address: [u8; 20], slot: U256, value: U256) -> Result<(), Error> {
         // Read the old value before auto-creating the account, so that we
         // capture the committed value even when the account was deleted from
-        // the cache via a prior remove_account (see read_committed_storage).
-        let old = self.read_committed_storage(&address, &slot)?;
+        // the cache via a prior remove_account (see read_current_storage).
+        let old = self.read_current_storage(&address, &slot)?;
         if old == value {
             return Ok(());
         }
@@ -152,9 +152,10 @@ impl<D: Database> WorldState<D> {
     }
 
     /// Read a storage value bypassing the account-cache `None` entry.
-    /// Needed by [`set_storage`] so that it can capture the committed storage
+    /// Checks the storage cache first, then falls back to the committed trie.
+    /// Needed by [`set_storage`] so that it can capture the current storage
     /// value before a deleted account is re-created in the cache.
-    fn read_committed_storage(&self, address: &[u8; 20], slot: &U256) -> Result<U256, Error> {
+    fn read_current_storage(&self, address: &[u8; 20], slot: &U256) -> Result<U256, Error> {
         // Check storage cache first (fast path)
         if let Some(val) = self.storage_cache.get(&(*address, *slot)) {
             return Ok(*val);
@@ -228,6 +229,7 @@ impl<D: Database> WorldState<D> {
                 }
             }
         }
+        self.code_cache.clear();
         self.journal.checkpoints.pop();
         Ok(())
     }
