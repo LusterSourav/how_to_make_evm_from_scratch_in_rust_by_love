@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 pub trait Database: Send + Sync {
     fn get(&self, key: &[u8; 32]) -> Result<Option<Vec<u8>>, ()>;
     fn insert(&mut self, key: [u8; 32], value: Vec<u8>) -> Result<(), ()>;
+    fn remove(&mut self, _key: &[u8; 32]) {}
 }
 
 /// In-memory trie node database backed by a BTreeMap.
@@ -37,6 +38,10 @@ impl Database for MemoryDB {
     fn insert(&mut self, key: [u8; 32], value: Vec<u8>) -> Result<(), ()> {
         self.store.insert(key, value);
         Ok(())
+    }
+
+    fn remove(&mut self, key: &[u8; 32]) {
+        self.store.remove(key);
     }
 }
 

@@ -801,6 +801,40 @@ impl NibbleBuf {
 }
 
 // ============================================================
+// Storage trie pruning
+// ============================================================
+
+/// Recursively delete all trie nodes reachable from a root hash.
+/// Used to clean up stale storage trie nodes when an account is deleted.
+pub fn delete_trie_nodes(db: &mut dyn super::db::Database, root: &[u8; 32]) -> Result<(), Error> {
+    if *root == EMPTY_ROOT_HASH {
+        return Ok(());
+    }
+    let data = db
+        .get(root)
+        .map_err(|_| Error::Database)?
+        .ok_or(Error::MissingNode)?;
+    let node = decode_node(&data)?;
+    match node {
+        Node::Branch { children, value: _ } => {
+            for child in children.iter().flatten() {
+                if let NodeRef::Hash(h) = child.as_ref() {
+                    delete_trie_nodes(db, h)?;
+                }
+            }
+        }
+        Node::Extension { path: _, child } => {
+            if let NodeRef::Hash(h) = child.as_ref() {
+                delete_trie_nodes(db, h)?;
+            }
+        }
+        Node::Leaf { .. } | Node::Empty => {}
+    }
+    db.remove(root);
+    Ok(())
+}
+
+// ============================================================
 // Tests
 // ============================================================
 

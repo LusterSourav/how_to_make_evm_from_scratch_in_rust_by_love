@@ -5,7 +5,7 @@ use crate::account::Account;
 use crate::db::Database;
 use crate::journal::{Journal, JournalEntry};
 use crate::keccak::keccak256;
-use crate::trie::{self, Trie, EMPTY_ROOT_HASH};
+use crate::trie::{self, delete_trie_nodes, Trie, EMPTY_ROOT_HASH};
 use crate::U256;
 
 // ============================================================
@@ -277,6 +277,20 @@ impl<D: Database> WorldState<D> {
             if let Some(mut acc) = self.get_account(addr)? {
                 acc.storage_root = new_storage_root;
                 self.account_cache.insert(*addr, Some(acc));
+            }
+        }
+
+        // Prune old storage tries for deleted accounts
+        for (addr, opt_acc) in &self.account_cache {
+            if opt_acc.is_none() {
+                let key = keccak256(addr);
+                if let Some(data) = self.state_trie.get(&self.db, &key)? {
+                    if let Ok(acc) = crate::account::Account::decode(&data) {
+                        if acc.storage_root != EMPTY_ROOT_HASH {
+                            delete_trie_nodes(&mut self.db, &acc.storage_root)?;
+                        }
+                    }
+                }
             }
         }
 
