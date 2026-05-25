@@ -540,45 +540,6 @@ impl NibbleBuf {
         &self.inner[..self.len]
     }
 
-    /// Split off the first nibble, returning `(first, rest)`.
-    #[inline]
-    #[must_use]
-    pub fn split_first(&self) -> Option<(u8, Self)> {
-        if self.is_empty() {
-            return None;
-        }
-        let first = self.inner[0];
-        let mut inner = [0u8; MAX_NIBBLES];
-        inner[..self.len - 1].copy_from_slice(&self.inner[1..self.len]);
-        Some((
-            first,
-            Self {
-                inner,
-                len: self.len - 1,
-            },
-        ))
-    }
-
-    /// Split into two at the given nibble index.
-    #[must_use]
-    pub fn split_at(&self, at: usize) -> (Self, Self) {
-        let first = {
-            let mut inner = [0u8; MAX_NIBBLES];
-            inner[..at].copy_from_slice(&self.inner[..at]);
-            Self { inner, len: at }
-        };
-        let second = {
-            let mut inner = [0u8; MAX_NIBBLES];
-            let remaining = self.len.saturating_sub(at);
-            inner[..remaining].copy_from_slice(&self.inner[at..self.len]);
-            Self {
-                inner,
-                len: remaining,
-            }
-        };
-        (first, second)
-    }
-
     /// Length of the common prefix with another `NibbleBuf`.
     #[must_use]
     pub fn common_prefix(&self, other: &Self) -> usize {
@@ -1359,44 +1320,6 @@ mod tests {
         let buf = NibbleBuf::default();
         assert!(buf.is_empty());
         assert_eq!(buf.len(), 0);
-    }
-
-    #[test]
-    fn nibble_buf_split_first() {
-        let buf = NibbleBuf::from_nibbles(&[0xa, 0xb, 0xc]);
-        let (first, rest) = buf.split_first().unwrap();
-        assert_eq!(first, 0xa);
-        assert_eq!(rest.as_nibbles(), &[0xb, 0xc]);
-    }
-
-    #[test]
-    fn nibble_buf_split_first_empty() {
-        let buf = NibbleBuf::default();
-        assert!(buf.split_first().is_none());
-    }
-
-    #[test]
-    fn nibble_buf_split_at() {
-        let buf = NibbleBuf::from_nibbles(&[0xa, 0xb, 0xc, 0xd]);
-        let (a, b) = buf.split_at(2);
-        assert_eq!(a.as_nibbles(), &[0xa, 0xb]);
-        assert_eq!(b.as_nibbles(), &[0xc, 0xd]);
-    }
-
-    #[test]
-    fn nibble_buf_split_at_zero() {
-        let buf = NibbleBuf::from_nibbles(&[0xa, 0xb]);
-        let (a, b) = buf.split_at(0);
-        assert_eq!(a.len(), 0);
-        assert_eq!(b.as_nibbles(), &[0xa, 0xb]);
-    }
-
-    #[test]
-    fn nibble_buf_split_at_end() {
-        let buf = NibbleBuf::from_nibbles(&[0xa, 0xb]);
-        let (a, b) = buf.split_at(2);
-        assert_eq!(a.as_nibbles(), &[0xa, 0xb]);
-        assert_eq!(b.len(), 0);
     }
 
     #[test]

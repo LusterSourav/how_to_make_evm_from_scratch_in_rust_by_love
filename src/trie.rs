@@ -738,19 +738,7 @@ fn cleanse_branch(
                     path: cp,
                     child: cc,
                 } => {
-                    let merged_path = {
-                        let mut inner = [0u8; MAX_NIBBLES];
-                        inner[0] = idx_byte;
-                        let mut pos = 1;
-                        for &n in cp.as_nibbles() {
-                            if pos < MAX_NIBBLES {
-                                inner[pos] = n;
-                                pos += 1;
-                            }
-                        }
-                        debug_assert!(pos <= MAX_NIBBLES, "branch collapse path overflow");
-                        NibbleBuf { inner, len: pos }
-                    };
+                    let merged_path = NibbleBuf::from_nibbles(&[idx_byte]).merge(&cp);
                     Ok(Node::Extension {
                         path: merged_path,
                         child: cc,
@@ -760,19 +748,7 @@ fn cleanse_branch(
                     path: cp,
                     value: cv,
                 } => {
-                    let merged_path = {
-                        let mut inner = [0u8; MAX_NIBBLES];
-                        inner[0] = idx_byte;
-                        let mut pos = 1;
-                        for &n in cp.as_nibbles() {
-                            if pos < MAX_NIBBLES {
-                                inner[pos] = n;
-                                pos += 1;
-                            }
-                        }
-                        debug_assert!(pos <= MAX_NIBBLES, "branch collapse path overflow");
-                        NibbleBuf { inner, len: pos }
-                    };
+                    let merged_path = NibbleBuf::from_nibbles(&[idx_byte]).merge(&cp);
                     Ok(Node::Leaf {
                         path: merged_path,
                         value: cv,

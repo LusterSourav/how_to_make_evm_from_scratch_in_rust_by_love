@@ -78,10 +78,6 @@ impl Journal {
         self.entries.is_empty()
     }
 
-    /// Drain all entries from the journal.
-    pub fn drain(&mut self) -> alloc::vec::Drain<JournalEntry> {
-        self.entries.drain(..)
-    }
 }
 
 impl Default for Journal {
@@ -169,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn journal_drain() {
+    fn journal_pop_empties() {
         let mut j = Journal::new();
         j.push(JournalEntry::AccountChange {
             address: [1u8; 20],
@@ -179,8 +175,8 @@ mod tests {
             address: [2u8; 20],
             old: None,
         });
-        let count = j.drain().count();
-        assert_eq!(count, 2);
+        assert!(j.pop().is_some());
+        assert!(j.pop().is_some());
         assert!(j.is_empty());
     }
 }
