@@ -523,7 +523,7 @@ fn insert_internal(
 
             // Partial match → split extension
             let mut children = empty_children();
-            let branch_value = None::<Vec<u8>>;
+            let mut branch_value = None::<Vec<u8>>;
 
             // Extension's remaining path
             if common < ep_slice.len() {
@@ -548,6 +548,8 @@ fn insert_internal(
                     insert_internal(db, Node::Empty, &suffix[1..], value)?
                 };
                 children[suffix[0] as usize] = Some(Box::new(commit_node(db, &child)?));
+            } else {
+                branch_value = Some(value);
             }
 
             let branch = Node::Branch {
