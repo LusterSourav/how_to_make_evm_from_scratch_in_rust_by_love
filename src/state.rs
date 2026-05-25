@@ -229,7 +229,6 @@ impl<D: Database> WorldState<D> {
                 }
             }
         }
-        self.code_cache.clear();
         self.journal.checkpoints.pop();
         Ok(())
     }

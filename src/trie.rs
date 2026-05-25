@@ -1007,6 +1007,18 @@ mod tests {
         assert_eq!(trie.get(db, b"abce").unwrap(), Some(b"val_e".to_vec()));
     }
 
+    /// Regression: inserting a prefix key after a longer key must set the
+    /// branch value (extension handler's `common == path.len()` branch).
+    #[test]
+    fn insert_prefix_key_after_longer_key() {
+        let db = &mut MemoryDB::new();
+        let mut trie = Trie::new();
+        trie.insert(db, b"dog", b"puppy".to_vec()).unwrap();
+        trie.insert(db, b"do", b"verb".to_vec()).unwrap();
+        assert_eq!(trie.get(db, b"do").unwrap(), Some(b"verb".to_vec()));
+        assert_eq!(trie.get(db, b"dog").unwrap(), Some(b"puppy".to_vec()));
+    }
+
     #[test]
     fn inline_node_skips_db() {
         let db = &mut MemoryDB::new();
