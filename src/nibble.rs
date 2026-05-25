@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use core::fmt;
 use core::iter::FusedIterator;
 
@@ -449,6 +450,173 @@ pub fn encode_nibble_path_padded(path: &[Nibble]) -> NibblePathPacked {
         inner,
         len: byte_count,
     }
+}
+
+// ============================================================
+// NibbleBuf — owned unpacked nibble path (max 64 nibbles)
+// ============================================================
+
+/// Maximum number of nibbles in a trie path (32 bytes × 2 = 64 nibbles).
+pub const MAX_NIBBLES: usize = 64;
+
+/// An owned nibble path for trie operations.
+///
+/// Stores up to 64 unpacked nibbles (each as a `u8` in 0..16).
+/// Paths are derived from `keccak256` output (32 bytes → 64 nibbles)
+/// or from raw byte keys.
+///
+/// # Invariant
+/// All bytes in `inner[..len]` are in `0..16`.
+/// All bytes in `inner[len..]` are zero.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct NibbleBuf {
+    pub(crate) inner: [u8; MAX_NIBBLES],
+    pub(crate) len: usize,
+}
+
+impl Default for NibbleBuf {
+    fn default() -> Self {
+        Self {
+            inner: [0u8; MAX_NIBBLES],
+            len: 0,
+        }
+    }
+}
+
+impl NibbleBuf {
+    /// Create from a byte slice, splitting each byte into two nibbles
+    /// (high nibble first, then low nibble).
+    #[must_use]
+    pub fn from_key(key: &[u8]) -> Self {
+        let mut inner = [0u8; MAX_NIBBLES];
+        let mut len = 0;
+        for &b in key {
+            if len >= MAX_NIBBLES {
+                break;
+            }
+            inner[len] = b >> 4;
+            len += 1;
+            if len >= MAX_NIBBLES {
+                break;
+            }
+            inner[len] = b & 0x0f;
+            len += 1;
+        }
+        Self { inner, len }
+    }
+
+    /// Create from an existing nibble slice (each byte must be 0..16).
+    /// Longer slices are truncated to [`MAX_NIBBLES`].
+    #[must_use]
+    pub fn from_nibbles(nibbles: &[u8]) -> Self {
+        debug_assert!(
+            nibbles.iter().all(|&b| b < 16),
+            "nibble values must be 0..15"
+        );
+        let mut inner = [0u8; MAX_NIBBLES];
+        let len = core::cmp::min(nibbles.len(), MAX_NIBBLES);
+        inner[..len].copy_from_slice(&nibbles[..len]);
+        Self { inner, len }
+    }
+
+    /// Number of nibbles in this path.
+    #[inline]
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Whether this path is empty.
+    #[inline]
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// View the nibble path as a byte slice.
+    #[inline]
+    #[must_use]
+    pub fn as_nibbles(&self) -> &[u8] {
+        &self.inner[..self.len]
+    }
+
+    /// Length of the common prefix with another `NibbleBuf`.
+    #[must_use]
+    pub fn common_prefix(&self, other: &Self) -> usize {
+        let max = core::cmp::min(self.len, other.len);
+        for i in 0..max {
+            if self.inner[i] != other.inner[i] {
+                return i;
+            }
+        }
+        max
+    }
+}
+
+// ============================================================
+// Hex-Prefix (HP) encoding — Yellow Paper Appendix C
+// ============================================================
+
+/// Encode a nibble path using HP (Hex-Prefix) encoding.
+///
+/// `path` is a slice of nibbles (each byte is 0..15).
+/// `is_leaf` controls the leaf flag (0x20 bit).
+///
+/// | `is_leaf` | odd path | Flag byte | Meaning |
+/// |-----------|----------|-----------|---------|
+/// | false     | false    | `0x00`    | Extension, even |
+/// | false     | true     | `0x10 + path[0]` | Extension, odd |
+/// | true      | false    | `0x20`    | Leaf, even |
+/// | true      | true     | `0x30 + path[0]` | Leaf, odd |
+#[must_use]
+pub fn hp_encode(path: &[u8], is_leaf: bool) -> Vec<u8> {
+    let flag_base = if is_leaf { 0x20u8 } else { 0x00u8 };
+    let odd = path.len() & 1;
+
+    if odd == 1 {
+        let mut out = Vec::with_capacity(1 + path.len() / 2);
+        out.push(flag_base | 0x10 | path[0]);
+        for chunk in path[1..].chunks(2) {
+            out.push((chunk[0] << 4) | chunk[1]);
+        }
+        out
+    } else {
+        let mut out = Vec::with_capacity(1 + path.len() / 2);
+        out.push(flag_base);
+        for chunk in path.chunks(2) {
+            out.push((chunk[0] << 4) | chunk[1]);
+        }
+        out
+    }
+}
+
+/// Decode an HP-encoded byte string back into nibble path and leaf flag.
+///
+/// Returns `(nibbles, is_leaf)`.
+#[must_use]
+pub fn hp_decode(data: &[u8]) -> (Vec<u8>, bool) {
+    if data.is_empty() {
+        return (Vec::new(), false);
+    }
+    let first = data[0];
+    let is_leaf = (first & 0x20) != 0;
+    let odd = (first & 0x10) != 0;
+
+    let nibble_count = if odd {
+        data.len() * 2 - 1
+    } else {
+        data.len() * 2
+    };
+    let mut nibbles = Vec::with_capacity(nibble_count);
+
+    if odd {
+        nibbles.push(first & 0x0f);
+    }
+    for &b in &data[1..] {
+        nibbles.push(b >> 4);
+        nibbles.push(b & 0x0f);
+    }
+    (nibbles, is_leaf)
 }
 
 // ============================================================
@@ -1017,6 +1185,168 @@ mod tests {
     fn hp_padding_panic_on_oversized() {
         let path = [Nibble::new_unchecked(0); 65];
         let _ = encode_nibble_path_padded(&path);
+    }
+
+    // --------------------------------------------------------
+    // HP encoding/decoding
+    // --------------------------------------------------------
+
+    #[test]
+    fn hp_encode_extension_even() {
+        // path [0, 6] → flag 0x00 + data 0x06
+        let result = hp_encode(&[0, 6], false);
+        assert_eq!(result, &[0x00, 0x06]);
+        let (nibs, leaf) = hp_decode(&result);
+        assert_eq!(nibs, &[0, 6]);
+        assert!(!leaf);
+    }
+
+    #[test]
+    fn hp_encode_extension_odd() {
+        // path [6] → flag 0x10 | 6 = 0x16
+        let result = hp_encode(&[6], false);
+        assert_eq!(result, &[0x16]);
+        let (nibs, leaf) = hp_decode(&result);
+        assert_eq!(nibs, &[6]);
+        assert!(!leaf);
+    }
+
+    #[test]
+    fn hp_encode_leaf_even() {
+        // path [0, 6] → flag 0x20 + data 0x06
+        let result = hp_encode(&[0, 6], true);
+        assert_eq!(result, &[0x20, 0x06]);
+        let (nibs, leaf) = hp_decode(&result);
+        assert_eq!(nibs, &[0, 6]);
+        assert!(leaf);
+    }
+
+    #[test]
+    fn hp_encode_leaf_odd() {
+        // path [6] → flag 0x30 | 6 = 0x36
+        let result = hp_encode(&[6], true);
+        assert_eq!(result, &[0x36]);
+        let (nibs, leaf) = hp_decode(&result);
+        assert_eq!(nibs, &[6]);
+        assert!(leaf);
+    }
+
+    #[test]
+    fn hp_encode_empty_path() {
+        // empty even path → flag only
+        let result = hp_encode(&[], false);
+        assert_eq!(result, &[0x00]);
+        let (nibs, leaf) = hp_decode(&result);
+        assert_eq!(nibs, &[]);
+        assert!(!leaf);
+
+        let result = hp_encode(&[], true);
+        assert_eq!(result, &[0x20]);
+        let (nibs, leaf) = hp_decode(&result);
+        assert_eq!(nibs, &[]);
+        assert!(leaf);
+    }
+
+    #[test]
+    fn hp_encode_long_odd_path() {
+        // odd-length path: 3 nibbles
+        let result = hp_encode(&[1, 2, 3], false);
+        assert_eq!(result, &[0x11, 0x23]); // flag=0x11, data=0x23
+        let (nibs, leaf) = hp_decode(&result);
+        assert_eq!(nibs, &[1, 2, 3]);
+        assert!(!leaf);
+    }
+
+    #[test]
+    fn hp_encode_roundtrip_all_combinations() {
+        for is_leaf in [false, true] {
+            for len in 0..=32 {
+                let path: Vec<u8> = (0..len).map(|i| (i % 16) as u8).collect();
+                let encoded = hp_encode(&path, is_leaf);
+                let (decoded, decoded_leaf) = hp_decode(&encoded);
+                assert_eq!(decoded, path, "path mismatch len={len} leaf={is_leaf}");
+                assert_eq!(decoded_leaf, is_leaf, "leaf flag mismatch len={len}");
+                assert_eq!(
+                    encoded.len(),
+                    1 + len / 2,
+                    "encoded length mismatch len={len}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hp_decode_empty_input() {
+        let (nibs, leaf) = hp_decode(&[]);
+        assert!(nibs.is_empty());
+        assert!(!leaf);
+    }
+
+    // --------------------------------------------------------
+    // NibbleBuf
+    // --------------------------------------------------------
+
+    #[test]
+    fn nibble_buf_from_key() {
+        let buf = NibbleBuf::from_key(&[0xAB, 0xCD]);
+        assert_eq!(buf.len(), 4);
+        assert_eq!(buf.as_nibbles(), &[0xA, 0xB, 0xC, 0xD]);
+    }
+
+    #[test]
+    fn nibble_buf_from_key_empty() {
+        let buf = NibbleBuf::from_key(&[]);
+        assert!(buf.is_empty());
+        assert_eq!(buf.len(), 0);
+    }
+
+    #[test]
+    fn nibble_buf_from_key_truncation() {
+        // 33 bytes → 66 nibbles, truncated to 64
+        let data = [0xFFu8; 33];
+        let buf = NibbleBuf::from_key(&data);
+        assert_eq!(buf.len(), 64);
+    }
+
+    #[test]
+    fn nibble_buf_from_nibbles() {
+        let buf = NibbleBuf::from_nibbles(&[0xa, 0xb, 0xc]);
+        assert_eq!(buf.len(), 3);
+        assert_eq!(buf.as_nibbles(), &[0xa, 0xb, 0xc]);
+    }
+
+    #[test]
+    fn nibble_buf_default_is_empty() {
+        let buf = NibbleBuf::default();
+        assert!(buf.is_empty());
+        assert_eq!(buf.len(), 0);
+    }
+
+    #[test]
+    fn nibble_buf_common_prefix() {
+        let a = NibbleBuf::from_nibbles(&[1, 2, 3, 4]);
+        let b = NibbleBuf::from_nibbles(&[1, 2, 5]);
+        assert_eq!(a.common_prefix(&b), 2);
+
+        let c = NibbleBuf::from_nibbles(&[1, 2, 3, 4]);
+        assert_eq!(a.common_prefix(&c), 4);
+
+        let d = NibbleBuf::from_nibbles(&[7, 8]);
+        assert_eq!(a.common_prefix(&d), 0);
+    }
+
+    #[test]
+    fn nibble_buf_common_prefix_empty() {
+        let a = NibbleBuf::from_nibbles(&[1, 2, 3]);
+        let b = NibbleBuf::default();
+        assert_eq!(a.common_prefix(&b), 0);
+    }
+
+    #[test]
+    fn nibble_buf_clone_eq() {
+        let a = NibbleBuf::from_nibbles(&[0xa, 0xb, 0xc]);
+        let b = a;
+        assert_eq!(a, b);
     }
 
     // --------------------------------------------------------

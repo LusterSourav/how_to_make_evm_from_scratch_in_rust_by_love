@@ -205,10 +205,7 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
         if len == 1 && input[offset + 1] <= 0x7f {
             return Err(RlpError::LeadingZeros);
         }
-        return Ok((
-            RlpItem::Str(&input[offset + 1..offset + 1 + len]),
-            1 + len,
-        ));
+        return Ok((RlpItem::Str(&input[offset + 1..offset + 1 + len]), 1 + len));
     }
 
     // --- String: long form (0xb8–0xbf) ---
@@ -222,7 +219,9 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
             // Must use short form for lengths < 56
             return Err(RlpError::InvalidLength);
         }
-        let payload_end = (offset + 1 + len_of_len).checked_add(len).ok_or(RlpError::InvalidLength)?;
+        let payload_end = (offset + 1 + len_of_len)
+            .checked_add(len)
+            .ok_or(RlpError::InvalidLength)?;
         if payload_end > input.len() {
             return Err(RlpError::Truncated);
         }
@@ -260,7 +259,9 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
     if payload_len < 56 {
         return Err(RlpError::InvalidLength);
     }
-    let payload_end = (offset + 1 + len_of_len).checked_add(payload_len).ok_or(RlpError::InvalidLength)?;
+    let payload_end = (offset + 1 + len_of_len)
+        .checked_add(payload_len)
+        .ok_or(RlpError::InvalidLength)?;
     if payload_end > input.len() {
         return Err(RlpError::Truncated);
     }
@@ -273,10 +274,7 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
         items.push(item);
         inner_offset += consumed;
     }
-    Ok((
-        RlpItem::List(items),
-        1 + len_of_len + payload_len,
-    ))
+    Ok((RlpItem::List(items), 1 + len_of_len + payload_len))
 }
 
 // ============================================================
@@ -309,7 +307,10 @@ use crate::U256;
 pub fn encode_u256(val: &U256) -> Vec<u8> {
     let be_bytes = val.to_bytes_be();
     // Strip leading zeros
-    let significant_start = be_bytes.iter().position(|&b| b != 0).unwrap_or(be_bytes.len());
+    let significant_start = be_bytes
+        .iter()
+        .position(|&b| b != 0)
+        .unwrap_or(be_bytes.len());
     if significant_start == be_bytes.len() {
         // Value is zero — encode as empty string
         encode_str(b"")
@@ -560,7 +561,8 @@ mod tests {
             let refs: Vec<&[u8]> = items.iter().map(|v| v.as_slice()).collect();
             let encoded = encode_list(&refs);
             let decoded = decode(&encoded).unwrap();
-            let expected_items: Vec<RlpItem> = items.iter()
+            let expected_items: Vec<RlpItem> = items
+                .iter()
                 .map(|encoded| decode(encoded).unwrap())
                 .collect();
             assert_eq!(decoded, RlpItem::List(expected_items));

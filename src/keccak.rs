@@ -75,11 +75,7 @@ fn keccak_f(state: &mut [[u64; 5]; 5]) {
         // Compute column parities
         let mut c = [0u64; 5];
         for x in 0..5 {
-            c[x] = state[x][0]
-                ^ state[x][1]
-                ^ state[x][2]
-                ^ state[x][3]
-                ^ state[x][4];
+            c[x] = state[x][0] ^ state[x][1] ^ state[x][2] ^ state[x][3] ^ state[x][4];
         }
 
         // Compute D[x] = C[x-1] XOR ROT(C[x+1], 1)
@@ -136,7 +132,12 @@ fn keccak_f(state: &mut [[u64; 5]; 5]) {
 /// Panics if `block` is longer than `RATE`.
 #[inline]
 fn xor_block_slice(state: &mut [[u64; 5]; 5], block: &[u8]) {
-    assert!(block.len() <= RATE, "xor_block_slice: block length {} exceeds RATE {}", block.len(), RATE);
+    assert!(
+        block.len() <= RATE,
+        "xor_block_slice: block length {} exceeds RATE {}",
+        block.len(),
+        RATE
+    );
     for (i, &byte) in block.iter().enumerate() {
         let lane_flat = i / 8;
         let lane_x = lane_flat % 5;
@@ -226,21 +227,24 @@ mod tests {
     #[test]
     fn keccak256_empty_string() {
         let result = keccak256(b"");
-        let expected = hex_decode("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
+        let expected =
+            hex_decode("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
         assert_eq!(&result[..], &expected[..]);
     }
 
     #[test]
     fn keccak256_hello() {
         let result = keccak256(b"hello");
-        let expected = hex_decode("1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8");
+        let expected =
+            hex_decode("1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8");
         assert_eq!(&result[..], &expected[..]);
     }
 
     #[test]
     fn keccak256_single_zero_byte() {
         let result = keccak256(&[0x00]);
-        let expected = hex_decode("bc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a");
+        let expected =
+            hex_decode("bc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a");
         assert_eq!(&result[..], &expected[..]);
     }
 
@@ -248,7 +252,8 @@ mod tests {
     fn keccak256_exactly_one_rate_block() {
         let input = [0xCDu8; 136];
         let result = keccak256(&input);
-        let expected = hex_decode("3be6532e147b1dc38de2cb305106adde45ad85988df254fbb75e59ebf22c9e9e");
+        let expected =
+            hex_decode("3be6532e147b1dc38de2cb305106adde45ad85988df254fbb75e59ebf22c9e9e");
         assert_eq!(&result[..], &expected[..]);
     }
 
@@ -256,7 +261,8 @@ mod tests {
     fn keccak256_multi_block() {
         let input = [0xEFu8; 137];
         let result = keccak256(&input);
-        let expected = hex_decode("33f09e00bf342dddaa91960d0b1986b140abe454e5aa66a0528df83e2fdef47a");
+        let expected =
+            hex_decode("33f09e00bf342dddaa91960d0b1986b140abe454e5aa66a0528df83e2fdef47a");
         assert_eq!(&result[..], &expected[..]);
     }
 
@@ -264,7 +270,8 @@ mod tests {
     fn keccak256_padding_at_last_byte() {
         let input = [0xABu8; 135];
         let result = keccak256(&input);
-        let expected = hex_decode("932fedc0e854cc4d32eec69e896c7449570052b3aaceacff7b13745325e4cf47");
+        let expected =
+            hex_decode("932fedc0e854cc4d32eec69e896c7449570052b3aaceacff7b13745325e4cf47");
         assert_eq!(&result[..], &expected[..]);
     }
 
@@ -273,7 +280,8 @@ mod tests {
         // 272 = 2 * 136 (RATE), exercises remaining == 0 padding path
         let input = [0xABu8; 272];
         let result = keccak256(&input);
-        let expected = hex_decode("0245c297e7ae739cbe32c757a55bdb3064c9e0fdf25941d9496ac21e5efeed35");
+        let expected =
+            hex_decode("0245c297e7ae739cbe32c757a55bdb3064c9e0fdf25941d9496ac21e5efeed35");
         assert_eq!(&result[..], &expected[..]);
     }
 }
