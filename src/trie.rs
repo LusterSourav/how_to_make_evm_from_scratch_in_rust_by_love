@@ -108,6 +108,9 @@ impl Trie {
     }
 
     /// Insert a key-value pair into the trie.
+    ///
+    /// On error (e.g. database failure), the trie root is reset to `Empty`.
+    /// The caller should recover from a persisted root hash.
     pub fn insert(
         &mut self,
         db: &mut dyn super::db::Database,
@@ -116,16 +119,35 @@ impl Trie {
     ) -> Result<(), Error> {
         let nibbles = NibbleBuf::from_key(key);
         let old = core::mem::take(&mut self.root);
-        self.root = insert_internal(db, old, nibbles.as_nibbles(), value)?;
-        Ok(())
+        match insert_internal(db, old, nibbles.as_nibbles(), value) {
+            Ok(new_root) => {
+                self.root = new_root;
+                Ok(())
+            }
+            Err(e) => {
+                self.root = Node::Empty;
+                Err(e)
+            }
+        }
     }
 
     /// Remove a key from the trie.
+    ///
+    /// On error (e.g. database failure), the trie root is reset to `Empty`.
+    /// The caller should recover from a persisted root hash.
     pub fn remove(&mut self, db: &mut dyn super::db::Database, key: &[u8]) -> Result<(), Error> {
         let nibbles = NibbleBuf::from_key(key);
         let old = core::mem::take(&mut self.root);
-        self.root = remove_internal(db, old, nibbles.as_nibbles())?;
-        Ok(())
+        match remove_internal(db, old, nibbles.as_nibbles()) {
+            Ok(new_root) => {
+                self.root = new_root;
+                Ok(())
+            }
+            Err(e) => {
+                self.root = Node::Empty;
+                Err(e)
+            }
+        }
     }
 
     /// Compute the root hash, writing all dirty nodes to the database.
