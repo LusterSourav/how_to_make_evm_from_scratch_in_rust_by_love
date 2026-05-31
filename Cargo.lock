@@ -4,7 +4,63 @@ version = 4
 
 [[package]]
 name = "bare-metal-evm"
-version = "0.1.0"
+version = "0.2.0"
+dependencies = [
+ "bare-metal-evm-keccak",
+ "bare-metal-evm-nibble",
+ "bare-metal-evm-rlp",
+ "bare-metal-evm-state",
+ "bare-metal-evm-trie",
+ "bare-metal-evm-types",
+ "hex",
+]
+
+[[package]]
+name = "bare-metal-evm-keccak"
+version = "0.2.0"
+dependencies = [
+ "hex",
+]
+
+[[package]]
+name = "bare-metal-evm-nibble"
+version = "0.2.0"
+dependencies = [
+ "hex",
+]
+
+[[package]]
+name = "bare-metal-evm-rlp"
+version = "0.2.0"
+dependencies = [
+ "bare-metal-evm-types",
+ "hex",
+]
+
+[[package]]
+name = "bare-metal-evm-state"
+version = "0.2.0"
+dependencies = [
+ "bare-metal-evm-keccak",
+ "bare-metal-evm-rlp",
+ "bare-metal-evm-trie",
+ "bare-metal-evm-types",
+ "hex",
+]
+
+[[package]]
+name = "bare-metal-evm-trie"
+version = "0.2.0"
+dependencies = [
+ "bare-metal-evm-keccak",
+ "bare-metal-evm-nibble",
+ "bare-metal-evm-rlp",
+ "hex",
+]
+
+[[package]]
+name = "bare-metal-evm-types"
+version = "0.2.0"
 dependencies = [
  "hex",
 ]

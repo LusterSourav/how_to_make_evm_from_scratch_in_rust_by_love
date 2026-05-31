@@ -1,14 +1,11 @@
 // Bare Metal EVM — Keccak-256 Sponge (Layer 1)
-// ===============================================
 // A zero-dependency implementation of the Keccak-256 hash function
 // used by Ethereum. Uses the 24-round Keccak-f[1600] permutation
 // with the Ethereum-specific padding rule (0x01 suffix, not NIST SHA-3 0x06).
 //
 // Reference: Keccak Reference v3.0, https://keccak.team/files/Keccak-reference-3.0.pdf
 
-// ============================================================
 // Constants
-// ============================================================
 
 /// Rate for Keccak-256: 1088 bits = 136 bytes.
 const RATE: usize = 136;
@@ -50,9 +47,7 @@ const RHO: [[u32; 5]; 5] = [
     [27, 20, 39, 8, 14],
 ];
 
-// ============================================================
 // Lane permutation mapping for π step
-// ============================================================
 
 /// Apply the π permutation: new position (y, (2x+3y)%5) ← old position (x, y).
 /// Returns the destination column for a source at (x, y).
@@ -61,9 +56,7 @@ const fn pi_dest(x: usize, y: usize) -> (usize, usize) {
     (y, (2 * x + 3 * y) % 5)
 }
 
-// ============================================================
 // Keccak-f[1600] — 24-round permutation
-// ============================================================
 
 /// Apply the 24-round Keccak-f permutation to a 1600-bit state.
 ///
@@ -71,7 +64,7 @@ const fn pi_dest(x: usize, y: usize) -> (usize, usize) {
 /// where `state[col][row]` gives the lane at column `col`, row `row`.
 fn keccak_f(state: &mut [[u64; 5]; 5]) {
     for rc in RC.iter() {
-        // --- θ (Theta): column parity mixing ---
+        // θ (Theta): column parity mixing
         // Compute column parities
         let mut c = [0u64; 5];
         for x in 0..5 {
@@ -91,7 +84,7 @@ fn keccak_f(state: &mut [[u64; 5]; 5]) {
             }
         }
 
-        // --- ρ + π (combined): rotate each lane then permute positions ---
+        // ρ + π (combined): rotate each lane then permute positions
         let mut b = [[0u64; 5]; 5];
         for x in 0..5 {
             for y in 0..5 {
@@ -101,7 +94,7 @@ fn keccak_f(state: &mut [[u64; 5]; 5]) {
             }
         }
 
-        // --- χ (Chi): non-linear row mixing ---
+        // χ (Chi): non-linear row mixing
         // A[x,y] = B[x,y] XOR (!B[x+1,y] AND B[x+2,y])
         for y in 0..5 {
             // Process all 5 x positions for this row
@@ -118,14 +111,12 @@ fn keccak_f(state: &mut [[u64; 5]; 5]) {
             state[4][y] = b4 ^ (!b0 & b1);
         }
 
-        // --- ι (Iota): round constant injection ---
+        // ι (Iota): round constant injection
         state[0][0] ^= rc;
     }
 }
 
-// ============================================================
 // Byte ↔ lane helpers
-// ============================================================
 
 /// XOR an arbitrary-length byte slice into the state (up to RATE bytes).
 ///
@@ -157,9 +148,7 @@ fn extract_byte(state: &[[u64; 5]; 5], byte_offset: usize) -> u8 {
     (state[lane_x][lane_y] >> bit_offset) as u8
 }
 
-// ============================================================
 // Keccak-256 — Sponge hash
-// ============================================================
 
 /// Compute the Keccak-256 hash of `input`.
 ///
@@ -172,7 +161,7 @@ fn extract_byte(state: &[[u64; 5]; 5], byte_offset: usize) -> u8 {
 pub fn keccak256(input: &[u8]) -> [u8; 32] {
     let mut state = [[0u64; 5]; 5];
 
-    // --- Absorb full rate blocks ---
+    // Absorb full rate blocks
     let full_blocks = input.len() / RATE;
     for block_idx in 0..full_blocks {
         let offset = block_idx * RATE;
@@ -181,7 +170,7 @@ pub fn keccak256(input: &[u8]) -> [u8; 32] {
         keccak_f(&mut state);
     }
 
-    // --- Padding + final block ---
+    // Padding + final block
     let remaining = input.len() % RATE;
     let mut block = [0u8; RATE];
     block[..remaining].copy_from_slice(&input[input.len() - remaining..]);
@@ -202,7 +191,7 @@ pub fn keccak256(input: &[u8]) -> [u8; 32] {
     xor_block_slice(&mut state, &block);
     keccak_f(&mut state);
 
-    // --- Squeeze first 32 bytes ---
+    // Squeeze first 32 bytes
     let mut output = [0u8; 32];
     for (i, byte) in output.iter_mut().enumerate() {
         *byte = extract_byte(&state, i);
@@ -211,9 +200,7 @@ pub fn keccak256(input: &[u8]) -> [u8; 32] {
     output
 }
 
-// ============================================================
 // Tests
-// ============================================================
 
 #[cfg(test)]
 mod tests {

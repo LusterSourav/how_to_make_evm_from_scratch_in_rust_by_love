@@ -1,13 +1,10 @@
-use crate::types::{U256, U512};
-use crate::U256_MAX;
+use crate::types::{U256, U512, U256_MAX};
 use core::ops::{
     Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div, Mul,
     MulAssign, Not, Rem, Shl, Shr, Sub, SubAssign,
 };
 
-// ============================================================
 // Addition — limb-wise with carry propagation
-// ============================================================
 
 impl U256 {
     #[must_use]
@@ -52,9 +49,7 @@ impl AddAssign for U256 {
     }
 }
 
-// ============================================================
 // Subtraction — limb-wise with borrow propagation
-// ============================================================
 
 impl U256 {
     #[must_use]
@@ -99,9 +94,7 @@ impl SubAssign for U256 {
     }
 }
 
-// ============================================================
 // Multiplication — u128 intermediates for MULX hints
-// ============================================================
 
 impl U256 {
     #[must_use]
@@ -173,9 +166,7 @@ impl MulAssign for U256 {
     }
 }
 
-// ============================================================
 // Bitwise operations
-// ============================================================
 
 impl Not for U256 {
     type Output = Self;
@@ -238,9 +229,7 @@ impl BitXorAssign for U256 {
     }
 }
 
-// ============================================================
 // Bit shifts
-// ============================================================
 
 impl U256 {
     #[must_use]
@@ -310,7 +299,6 @@ impl Shr<u32> for U256 {
     }
 }
 
-// ============================================================
 // Division — Knuth's Algorithm D (TAOCP Vol 2, §4.3.1)
 //
 // Six stages:
@@ -325,7 +313,6 @@ impl Shr<u32> for U256 {
 //   D8. Unnormalize — divide remainder by normalization factor
 //
 // Division by zero returns (0, 0) per EVM Yellow Paper.
-// ============================================================
 
 impl U256 {
     #[must_use]
@@ -506,9 +493,7 @@ impl Rem for U256 {
     }
 }
 
-// ============================================================
 // Exponentiation — square-and-multiply (mod 2²⁵⁶)
-// ============================================================
 
 impl U256 {
     #[must_use]
@@ -536,9 +521,7 @@ impl U256 {
     }
 }
 
-// ============================================================
 // Signed arithmetic — two's complement SDIV / SMOD
-// ============================================================
 
 impl U256 {
     #[must_use]
@@ -576,9 +559,7 @@ impl U256 {
     }
 }
 
-// ============================================================
 // Tests
-// ============================================================
 
 #[cfg(test)]
 mod tests {
@@ -595,7 +576,7 @@ mod tests {
         U256::from_bytes_le(bytes)
     }
 
-    // ---------- Addition ----------
+    // Addition
 
     #[test]
     fn add_zero_identity() {
@@ -638,7 +619,7 @@ mod tests {
         assert_eq!(sum.0[3], 0);
     }
 
-    // ---------- Subtraction ----------
+    // Subtraction
 
     #[test]
     fn sub_basic() {
@@ -662,7 +643,7 @@ mod tests {
         assert_eq!(diff.0[2], 0);
     }
 
-    // ---------- Multiplication ----------
+    // Multiplication
 
     #[test]
     fn mul_small() {
@@ -730,7 +711,7 @@ mod tests {
         assert!(overflow);
     }
 
-    // ---------- Division ----------
+    // Division
 
     #[test]
     fn div_exact() {
@@ -815,7 +796,7 @@ mod tests {
         assert_eq!(U256::from_u64(100) % U256::from_u64(7), U256::from_u64(2));
     }
 
-    // ---------- Exponentiation ----------
+    // Exponentiation
 
     #[test]
     fn exp_zero_exponent() {
@@ -846,7 +827,7 @@ mod tests {
         assert_eq!(U256::one().exp(U256::from_u64(99999)), U256::one());
     }
 
-    // ---------- Signed division ----------
+    // Signed division
 
     #[test]
     fn sdiv_positive() {
@@ -885,7 +866,7 @@ mod tests {
         assert_eq!(int_min.sdiv(neg_one), int_min);
     }
 
-    // ---------- Signed modulo ----------
+    // Signed modulo
 
     #[test]
     fn smod_basic() {
@@ -907,7 +888,7 @@ mod tests {
         assert_eq!(U256::from_u64(42).smod(U256::zero()), U256::zero());
     }
 
-    // ---------- Bit shifts ----------
+    // Bit shifts
 
     #[test]
     fn shl_basic() {
@@ -981,7 +962,7 @@ mod tests {
         assert_eq!(shifted.0[1], 0x0987_6543_210F_EDCB);
     }
 
-    // ---------- Checked variants ----------
+    // Checked variants
 
     #[test]
     fn checked_add_overflow() {
@@ -1025,7 +1006,7 @@ mod tests {
         assert_eq!(U256::from_u64(1) >> 1u32, U256::zero());
     }
 
-    // ---------- Bitwise operations ----------
+    // Bitwise operations
 
     #[test]
     fn not_identity() {

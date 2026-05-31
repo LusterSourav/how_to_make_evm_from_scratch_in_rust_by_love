@@ -1,5 +1,3 @@
-extern crate alloc;
-
 use core::alloc::Layout;
 use core::panic::PanicInfo;
 

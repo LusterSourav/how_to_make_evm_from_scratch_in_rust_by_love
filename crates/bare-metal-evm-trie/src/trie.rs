@@ -2,13 +2,11 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cmp::min;
 
-use crate::keccak::keccak256;
-use crate::nibble::{hp_decode, hp_encode, NibbleBuf, MAX_NIBBLES};
-use crate::rlp::{decode_strict, encode_list, encode_str, RlpItem};
+use bare_metal_evm_keccak::keccak256;
+use bare_metal_evm_nibble::{hp_decode, hp_encode, NibbleBuf};
+use bare_metal_evm_rlp::{decode_strict, encode_list, encode_str, RlpItem};
 
-// ============================================================
 // Constants
-// ============================================================
 
 /// `keccak256(rlp(b""))` = root hash of an empty trie.
 pub const EMPTY_ROOT_HASH: [u8; 32] = [
@@ -16,9 +14,7 @@ pub const EMPTY_ROOT_HASH: [u8; 32] = [
     0x5b, 0x48, 0xe0, 0x1b, 0x99, 0x6c, 0xad, 0xc0, 0x01, 0x62, 0x2f, 0xb5, 0xe3, 0x63, 0xb4, 0x21,
 ];
 
-// ============================================================
 // Error type
-// ============================================================
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
@@ -27,9 +23,7 @@ pub enum Error {
     DecodeFailed,
 }
 
-// ============================================================
 // Node types
-// ============================================================
 
 /// A decoded trie node.
 #[derive(Clone, Debug, PartialEq)]
@@ -72,9 +66,7 @@ fn empty_children() -> [Option<Box<NodeRef>>; 16] {
     ]
 }
 
-// ============================================================
 // Trie
-// ============================================================
 
 /// A Merkle Patricia Trie backed by a `Database`.
 #[derive(Clone, Debug)]
@@ -89,7 +81,7 @@ impl Trie {
     }
 
     /// Decode a trie from a persisted root hash.
-    pub fn from_root(db: &dyn super::db::Database, root_hash: &[u8; 32]) -> Result<Self, Error> {
+    pub fn from_root(db: &dyn crate::db::Database, root_hash: &[u8; 32]) -> Result<Self, Error> {
         if *root_hash == EMPTY_ROOT_HASH {
             return Ok(Self::new());
         }
@@ -102,7 +94,7 @@ impl Trie {
     }
 
     /// Look up a value by its raw key.
-    pub fn get(&self, db: &dyn super::db::Database, key: &[u8]) -> Result<Option<Vec<u8>>, Error> {
+    pub fn get(&self, db: &dyn crate::db::Database, key: &[u8]) -> Result<Option<Vec<u8>>, Error> {
         let nibbles = NibbleBuf::from_key(key);
         get_internal(db, &self.root, nibbles.as_nibbles())
     }
@@ -113,7 +105,7 @@ impl Trie {
     /// The caller should recover from a persisted root hash.
     pub fn insert(
         &mut self,
-        db: &mut dyn super::db::Database,
+        db: &mut dyn crate::db::Database,
         key: &[u8],
         value: Vec<u8>,
     ) -> Result<(), Error> {
@@ -135,7 +127,7 @@ impl Trie {
     ///
     /// On error (e.g. database failure), the trie root is reset to `Empty`.
     /// The caller should recover from a persisted root hash.
-    pub fn remove(&mut self, db: &mut dyn super::db::Database, key: &[u8]) -> Result<(), Error> {
+    pub fn remove(&mut self, db: &mut dyn crate::db::Database, key: &[u8]) -> Result<(), Error> {
         let nibbles = NibbleBuf::from_key(key);
         let old = core::mem::take(&mut self.root);
         match remove_internal(db, old, nibbles.as_nibbles()) {
@@ -151,7 +143,7 @@ impl Trie {
     }
 
     /// Compute the root hash, writing all dirty nodes to the database.
-    pub fn root_hash(&self, db: &mut dyn super::db::Database) -> Result<[u8; 32], Error> {
+    pub fn root_hash(&self, db: &mut dyn crate::db::Database) -> Result<[u8; 32], Error> {
         if self.root == Node::Empty {
             return Ok(EMPTY_ROOT_HASH);
         }
@@ -168,9 +160,7 @@ impl Default for Trie {
     }
 }
 
-// ============================================================
 // RLP encoding
-// ============================================================
 
 fn rlp_encode_node(node: &Node) -> Vec<u8> {
     match node {
@@ -213,9 +203,7 @@ fn rlp_encode_ref(node_ref: &NodeRef) -> Vec<u8> {
     }
 }
 
-// ============================================================
 // RLP decoding
-// ============================================================
 
 fn decode_node(data: &[u8]) -> Result<Node, Error> {
     let item = decode_strict(data).map_err(|_| Error::DecodeFailed)?;
@@ -301,13 +289,11 @@ fn decode_ref_from_item(item: &RlpItem) -> Result<NodeRef, Error> {
     }
 }
 
-// ============================================================
 // Node commitment (encode → hash → store)
-// ============================================================
 
 /// RLP-encode a node, store it in the DB, return its reference.
 /// Nodes < 32 bytes are returned as Inline (embedded in the parent node's RLP).
-fn commit_node(db: &mut dyn super::db::Database, node: Node) -> Result<NodeRef, Error> {
+fn commit_node(db: &mut dyn crate::db::Database, node: Node) -> Result<NodeRef, Error> {
     match node {
         Node::Empty => Ok(NodeRef::Empty),
         non_empty => {
@@ -322,11 +308,9 @@ fn commit_node(db: &mut dyn super::db::Database, node: Node) -> Result<NodeRef, 
     }
 }
 
-// ============================================================
 // Node resolution (DB → decoded)
-// ============================================================
 
-fn resolve_ref(db: &dyn super::db::Database, node_ref: &NodeRef) -> Result<Node, Error> {
+fn resolve_ref(db: &dyn crate::db::Database, node_ref: &NodeRef) -> Result<Node, Error> {
     match node_ref {
         NodeRef::Empty => Ok(Node::Empty),
         NodeRef::Inline(n) => Ok(*n.clone()),
@@ -340,9 +324,7 @@ fn resolve_ref(db: &dyn super::db::Database, node_ref: &NodeRef) -> Result<Node,
     }
 }
 
-// ============================================================
 // Helpers
-// ============================================================
 
 fn common_prefix_len(a: &[u8], b: &[u8]) -> usize {
     let max = min(a.len(), b.len());
@@ -354,12 +336,10 @@ fn common_prefix_len(a: &[u8], b: &[u8]) -> usize {
     max
 }
 
-// ============================================================
 // Get internal
-// ============================================================
 
 fn get_internal(
-    db: &dyn super::db::Database,
+    db: &dyn crate::db::Database,
     node: &Node,
     path: &[u8],
 ) -> Result<Option<Vec<u8>>, Error> {
@@ -397,12 +377,10 @@ fn get_internal(
     }
 }
 
-// ============================================================
 // Insert internal
-// ============================================================
 
 fn insert_internal(
-    db: &mut dyn super::db::Database,
+    db: &mut dyn crate::db::Database,
     node: Node,
     path: &[u8],
     value: Vec<u8>,
@@ -601,12 +579,10 @@ fn insert_internal(
     }
 }
 
-// ============================================================
 // Remove internal
-// ============================================================
 
 fn remove_internal(
-    db: &mut dyn super::db::Database,
+    db: &mut dyn crate::db::Database,
     node: Node,
     path: &[u8],
 ) -> Result<Node, Error> {
@@ -700,12 +676,10 @@ fn remove_internal(
     }
 }
 
-// ============================================================
 // Branch cleansing — collapse single-child branches
-// ============================================================
 
 fn cleanse_branch(
-    db: &mut dyn super::db::Database,
+    db: &mut dyn crate::db::Database,
     children: [Option<Box<NodeRef>>; 16],
     value: Option<Vec<u8>>,
 ) -> Result<Node, Error> {
@@ -771,42 +745,11 @@ fn cleanse_branch(
     }
 }
 
-// ============================================================
-// NibbleBuf merge helper
-// ============================================================
-
-impl NibbleBuf {
-    /// Concatenate two nibble paths.
-    #[must_use]
-    pub fn merge(&self, other: &Self) -> Self {
-        debug_assert!(
-            self.len + other.len <= MAX_NIBBLES,
-            "NibbleBuf::merge overflow: {} + {} > {}",
-            self.len,
-            other.len,
-            MAX_NIBBLES
-        );
-        let mut inner = [0u8; MAX_NIBBLES];
-        let self_end = min(self.len, MAX_NIBBLES);
-        inner[..self_end].copy_from_slice(&self.inner[..self_end]);
-        let remaining = MAX_NIBBLES - self_end;
-        let other_len = min(other.len, remaining);
-        let other_start = self_end;
-        inner[other_start..other_start + other_len].copy_from_slice(&other.inner[..other_len]);
-        Self {
-            inner,
-            len: self_end + other_len,
-        }
-    }
-}
-
-// ============================================================
 // Storage trie pruning
-// ============================================================
 
 /// Recursively delete all trie nodes reachable from a root hash.
 /// Used to clean up stale storage trie nodes when an account is deleted.
-pub fn delete_trie_nodes(db: &mut dyn super::db::Database, root: &[u8; 32]) -> Result<(), Error> {
+pub fn delete_trie_nodes(db: &mut dyn crate::db::Database, root: &[u8; 32]) -> Result<(), Error> {
     if *root == EMPTY_ROOT_HASH {
         return Ok(());
     }
@@ -834,9 +777,7 @@ pub fn delete_trie_nodes(db: &mut dyn super::db::Database, root: &[u8; 32]) -> R
     Ok(())
 }
 
-// ============================================================
 // Tests
-// ============================================================
 
 #[cfg(test)]
 mod tests {

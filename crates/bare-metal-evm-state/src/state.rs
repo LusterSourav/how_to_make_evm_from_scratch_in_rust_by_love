@@ -1,16 +1,16 @@
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
-use crate::account::Account;
-use crate::db::Database;
-use crate::journal::{Journal, JournalEntry};
-use crate::keccak::keccak256;
-use crate::trie::{self, delete_trie_nodes, Trie, EMPTY_ROOT_HASH};
-use crate::U256;
+use bare_metal_evm_keccak::keccak256;
+use bare_metal_evm_trie as trie;
+use bare_metal_evm_types::U256;
 
-// ============================================================
+use crate::account::Account;
+use crate::journal::{Journal, JournalEntry};
+
+use trie::{delete_trie_nodes, Database, Trie, EMPTY_ROOT_HASH};
+
 // Error
-// ============================================================
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
@@ -24,9 +24,7 @@ impl From<trie::Error> for Error {
     }
 }
 
-// ============================================================
 // WorldState
-// ============================================================
 
 /// In-memory world state with deferred trie writes and journal-based rollback.
 ///
@@ -243,6 +241,10 @@ impl<D: Database> WorldState<D> {
 
         // Flush storage changes
         for (addr, slots) in account_storage.iter_mut() {
+            // Skip storage writes for accounts being deleted in this commit
+            if self.account_cache.get(addr) == Some(&None) {
+                continue;
+            }
             slots.sort();
             slots.dedup();
 
@@ -318,9 +320,7 @@ impl<D: Database> WorldState<D> {
     }
 }
 
-// ============================================================
 // Helpers
-// ============================================================
 
 /// Strip leading zero bytes from a U256 big-endian representation.
 fn trim_leading_zeros_be(val: U256) -> Vec<u8> {
@@ -332,7 +332,7 @@ fn trim_leading_zeros_be(val: U256) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::MemoryDB;
+    use bare_metal_evm_trie::MemoryDB;
     use alloc::vec;
 
     fn make_db() -> MemoryDB {

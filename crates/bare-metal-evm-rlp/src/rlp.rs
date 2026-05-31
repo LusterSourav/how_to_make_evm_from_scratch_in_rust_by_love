@@ -1,5 +1,4 @@
 // Bare Metal EVM — RLP Encoding/Decoding (Layer 1)
-// ===================================================
 // Recursive Length Prefix — Ethereum's universal serialization format.
 //
 // Encoding rules (five prefix ranges):
@@ -15,9 +14,7 @@
 use alloc::vec::Vec;
 use core::fmt;
 
-// ============================================================
 // RLP item — decode result
-// ============================================================
 
 /// A decoded RLP item — either a string (byte slice) or a list of sub-items.
 #[derive(Clone, Debug, PartialEq)]
@@ -26,9 +23,7 @@ pub enum RlpItem<'a> {
     List(Vec<RlpItem<'a>>),
 }
 
-// ============================================================
 // Errors
-// ============================================================
 
 /// Errors that can occur during RLP decoding.
 #[derive(Clone, Debug, PartialEq)]
@@ -60,9 +55,7 @@ impl fmt::Display for RlpError {
     }
 }
 
-// ============================================================
 // Encoding helpers
-// ============================================================
 
 /// Encode the length prefix for an RLP item.
 ///
@@ -95,9 +88,7 @@ fn usize_to_be_bytes(mut n: usize) -> ([u8; 8], usize) {
     (bytes, 8 - i)
 }
 
-// ============================================================
 // Encoding — public API
-// ============================================================
 
 /// Encode a byte string using RLP.
 #[must_use]
@@ -152,9 +143,7 @@ pub fn encode_list_from_iter<'a>(items: impl IntoIterator<Item = &'a [u8]>) -> V
     out
 }
 
-// ============================================================
 // Decoding — public API
-// ============================================================
 
 /// Maximum allowed nesting depth for RLP decoding.
 const MAX_DECODE_DEPTH: usize = 128;
@@ -190,15 +179,16 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
 
     let prefix = input[offset];
 
-    // --- Single byte (0x00–0x7f): self-encoding ---
+    // Single byte (0x00–0x7f): self-encoding
     if prefix <= 0x7f {
         return Ok((RlpItem::Str(&input[offset..offset + 1]), 1));
     }
 
-    // --- String: short form (0x80–0xb7) ---
+    // String: short form (0x80–0xb7)
     if prefix <= 0xb7 {
         let len = (prefix - 0x80) as usize;
-        if offset + 1 + len > input.len() {
+        let end = offset.checked_add(1 + len).ok_or(RlpError::InvalidLength)?;
+        if end > input.len() {
             return Err(RlpError::Truncated);
         }
         // Strict minimalism: single byte in [0x00, 0x7f] must not use string form
@@ -208,7 +198,7 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
         return Ok((RlpItem::Str(&input[offset + 1..offset + 1 + len]), 1 + len));
     }
 
-    // --- String: long form (0xb8–0xbf) ---
+    // String: long form (0xb8–0xbf)
     if prefix <= 0xbf {
         let len_of_len = (prefix - 0xb7) as usize;
         if offset + 1 + len_of_len > input.len() {
@@ -231,10 +221,11 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
         ));
     }
 
-    // --- List: short form (0xc0–0xf7) ---
+    // List: short form (0xc0–0xf7)
     if prefix <= 0xf7 {
         let payload_len = (prefix - 0xc0) as usize;
-        if offset + 1 + payload_len > input.len() {
+        let end = offset.checked_add(1 + payload_len).ok_or(RlpError::InvalidLength)?;
+        if end > input.len() {
             return Err(RlpError::Truncated);
         }
         let payload = &input[offset + 1..offset + 1 + payload_len];
@@ -246,10 +237,11 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
             items.push(item);
             inner_offset += consumed;
         }
+        debug_assert_eq!(inner_offset, payload.len());
         return Ok((RlpItem::List(items), 1 + payload_len));
     }
 
-    // --- List: long form (0xf8–0xff) ---
+    // List: long form (0xf8–0xff)
     // prefix is at least 0xf8 since previous checks passed
     let len_of_len = (prefix - 0xf7) as usize;
     if offset + 1 + len_of_len > input.len() {
@@ -274,12 +266,11 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
         items.push(item);
         inner_offset += consumed;
     }
+    debug_assert_eq!(inner_offset, payload.len());
     Ok((RlpItem::List(items), 1 + len_of_len + payload_len))
 }
 
-// ============================================================
 // Big-endian byte conversion
-// ============================================================
 
 /// Convert a big-endian byte slice to a usize.
 ///
@@ -293,11 +284,9 @@ fn be_bytes_to_usize(bytes: &[u8]) -> usize {
     result
 }
 
-// ============================================================
 // Convenience: encode a U256 as RLP (big-endian, no leading zeros)
-// ============================================================
 
-use crate::U256;
+use bare_metal_evm_types::U256;
 
 /// Encode a `U256` value to its RLP string representation.
 ///
@@ -319,9 +308,7 @@ pub fn encode_u256(val: &U256) -> Vec<u8> {
     }
 }
 
-// ============================================================
 // Tests
-// ============================================================
 
 #[cfg(test)]
 mod tests {
@@ -331,9 +318,7 @@ mod tests {
         hex::decode(s).unwrap()
     }
 
-    // --------------------------------------------------------
     // String encoding
-    // --------------------------------------------------------
 
     #[test]
     fn encode_single_byte_self_encoding() {
@@ -388,9 +373,7 @@ mod tests {
         assert_eq!(result[2], 0x01);
     }
 
-    // --------------------------------------------------------
     // List encoding
-    // --------------------------------------------------------
 
     #[test]
     fn encode_empty_list() {
@@ -438,9 +421,7 @@ mod tests {
         assert_eq!(nested, hex("c6c0c1c0c2c0c0"));
     }
 
-    // --------------------------------------------------------
     // Decoding
-    // --------------------------------------------------------
 
     #[test]
     fn decode_single_byte() {
@@ -495,9 +476,7 @@ mod tests {
         );
     }
 
-    // --------------------------------------------------------
     // Strict minimalism checks
-    // --------------------------------------------------------
 
     #[test]
     fn reject_leading_zero_in_string() {
@@ -524,9 +503,7 @@ mod tests {
         assert_eq!(decoded, RlpItem::Str(&input[..]));
     }
 
-    // --------------------------------------------------------
     // Round-trip tests
-    // --------------------------------------------------------
 
     #[test]
     fn roundtrip_string() {
@@ -569,9 +546,7 @@ mod tests {
         }
     }
 
-    // --------------------------------------------------------
     // Error cases
-    // --------------------------------------------------------
 
     #[test]
     fn decode_truncated_string() {
@@ -589,9 +564,7 @@ mod tests {
         assert_eq!(result, Err(RlpError::Truncated));
     }
 
-    // --------------------------------------------------------
     // Strict decoding with trailing data checks
-    // --------------------------------------------------------
 
     #[test]
     fn decode_strict_accepts_exact_input() {
@@ -622,9 +595,7 @@ mod tests {
         assert_eq!(result, Err(RlpError::Truncated));
     }
 
-    // --------------------------------------------------------
     // Recursion depth limits
-    // --------------------------------------------------------
 
     #[test]
     fn decode_too_deep_nesting() {
@@ -657,9 +628,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    // --------------------------------------------------------
     // U256 encoding
-    // --------------------------------------------------------
 
     #[test]
     fn encode_u256_zero() {
@@ -706,9 +675,7 @@ mod tests {
         assert_eq!(result, expected);
     }
 
-    // --------------------------------------------------------
     // Long-form list encoding (>255 byte payload)
-    // --------------------------------------------------------
 
     #[test]
     fn encode_long_list_over_255() {

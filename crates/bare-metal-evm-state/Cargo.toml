@@ -1,0 +1,19 @@
+[package]
+name = "bare-metal-evm-state"
+version = "0.2.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "EVM state management: accounts, journaling, and state transitions"
+keywords = ["evm", "state", "journal", "account", "no-std"]
+categories = ["no-std", "data-structures"]
+
+[dependencies]
+bare-metal-evm-keccak = { path = "../bare-metal-evm-keccak" }
+bare-metal-evm-types = { path = "../bare-metal-evm-types" }
+bare-metal-evm-rlp = { path = "../bare-metal-evm-rlp" }
+bare-metal-evm-trie = { path = "../bare-metal-evm-trie" }
+
+[dev-dependencies]
+hex.workspace = true

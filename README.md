@@ -65,6 +65,8 @@ fn panic(_info: &PanicInfo) -> ! {
 
 If the `alloc` crate is used for any dynamic structures, an `alloc_error_handler` is also required — called when the allocator fails to satisfy a request. In a `no_std` context, the correct response is the same: halt deterministically.
 
+The `alloc_error_handler` and panic handler are gated behind the `runtime` Cargo feature (`--features runtime`). **This feature requires nightly Rust** because `alloc_error_handler` is unstable. On stable Rust, omit `--features runtime`; the crate compiles as a pure `no_std` library with no runtime prerequisites.
+
 ### Deterministic Memory
 
 There is no OS heap unless you explicitly bring one. All buffers — the EVM stack, memory, journal, access lists — are either fixed-size arrays or manually managed slices. This guarantees absolute determinism: the same bytecode, same input, same gas limit always produces the same result, on any host architecture, with no dependency on OS memory layout or allocator behavior.

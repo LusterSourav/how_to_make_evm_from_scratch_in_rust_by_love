@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use crate::U256;
+use bare_metal_evm_types::U256;
 
 /// An atomic change to the world state that can be rolled back.
 #[derive(Clone, Debug, PartialEq)]

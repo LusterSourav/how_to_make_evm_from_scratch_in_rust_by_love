@@ -1,0 +1,13 @@
+[package]
+name = "bare-metal-evm-nibble"
+version = "0.2.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Nibble (4-bit) buffer type for Merkle Patricia Trie path operations"
+keywords = ["nibble", "trie", "merkle", "patricia", "no-std"]
+categories = ["no-std", "data-structures"]
+
+[dev-dependencies]
+hex.workspace = true

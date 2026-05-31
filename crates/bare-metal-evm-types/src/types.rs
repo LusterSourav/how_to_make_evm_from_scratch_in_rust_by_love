@@ -9,9 +9,7 @@ pub struct U256(pub [u64; 4]);
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct U512(pub [u64; 8]);
 
-// ============================================================
 // U256 — Core methods
-// ============================================================
 
 impl U256 {
     #[must_use]
@@ -67,8 +65,8 @@ impl U256 {
     }
 
     /// Return the big-endian byte representation.
-    /// The least-significant limb (limbs[0]) becomes the trailing bytes,
-    /// and the most-significant limb (limbs[3]) becomes the leading bytes.
+    /// The least-significant limb (limbs `[0]`) becomes the trailing bytes,
+    /// and the most-significant limb (limbs `[3]`) becomes the leading bytes.
     #[must_use]
     pub fn to_bytes_be(&self) -> [u8; 32] {
         let mut bytes = self.to_bytes_le();
@@ -124,9 +122,7 @@ impl U256 {
     }
 }
 
-// ============================================================
 // U256 — Display
-// ============================================================
 
 impl fmt::Display for U256 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -158,9 +154,7 @@ impl fmt::UpperHex for U256 {
     }
 }
 
-// ============================================================
 // U256 — Ordering
-// ============================================================
 
 impl PartialOrd for U256 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -180,9 +174,7 @@ impl Ord for U256 {
     }
 }
 
-// ============================================================
 // U512 — Core methods
-// ============================================================
 
 impl U512 {
     #[must_use]

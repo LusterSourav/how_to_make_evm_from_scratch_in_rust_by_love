@@ -1,0 +1,16 @@
+[package]
+name = "bare-metal-evm-rlp"
+version = "0.2.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Minimal RLP (Recursive Length Prefix) encoding and decoding for bare-metal-evm"
+keywords = ["rlp", "ethereum", "encoding", "no-std", "rlp-encoding"]
+categories = ["no-std", "data-structures"]
+
+[dependencies]
+bare-metal-evm-types = { path = "../bare-metal-evm-types" }
+
+[dev-dependencies]
+hex.workspace = true

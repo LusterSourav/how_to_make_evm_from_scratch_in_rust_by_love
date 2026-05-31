@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 
-use crate::rlp::{decode_strict, encode_list, encode_str, encode_u256, RlpItem};
-use crate::U256;
+use bare_metal_evm_rlp::{decode_strict, encode_list, encode_str, encode_u256, RlpItem};
+use bare_metal_evm_types::U256;
 
 /// `keccak256(b"")` — hash of empty EVM bytecode.
 pub const EMPTY_CODE_HASH: [u8; 32] = [
@@ -28,7 +28,7 @@ impl Account {
         Self {
             nonce: U256::zero(),
             balance: U256::zero(),
-            storage_root: crate::trie::EMPTY_ROOT_HASH,
+            storage_root: bare_metal_evm_trie::EMPTY_ROOT_HASH,
             code_hash: EMPTY_CODE_HASH,
         }
     }
@@ -97,7 +97,7 @@ fn rlp_to_u256(item: &RlpItem) -> Result<U256, ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::keccak::keccak256;
+    use bare_metal_evm_keccak::keccak256;
 
     #[test]
     fn empty_account_roundtrip() {
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn rlp_to_u256_edge_cases() {
         let acc = Account {
-            nonce: crate::U256_MAX,
+            nonce: bare_metal_evm_types::U256_MAX,
             balance: U256::zero(),
             storage_root: [0xabu8; 32],
             code_hash: [0xcdu8; 32],
