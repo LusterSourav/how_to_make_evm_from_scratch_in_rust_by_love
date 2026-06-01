@@ -11,9 +11,9 @@ categories = ["no-std", "data-structures"]
 publish = ["crates-io", "github"]
 
 [dependencies]
-bare-metal-evm-keccak = { path = "../bare-metal-evm-keccak", version = "0.2.0" }
-bare-metal-evm-nibble = { path = "../bare-metal-evm-nibble", version = "0.2.0" }
-bare-metal-evm-rlp = { path = "../bare-metal-evm-rlp", version = "0.2.0" }
+bare-metal-evm-keccak = { workspace = true }
+bare-metal-evm-nibble = { workspace = true }
+bare-metal-evm-rlp = { workspace = true }
 
 [dev-dependencies]
 hex.workspace = true

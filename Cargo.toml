@@ -17,6 +17,12 @@ repository = "https://github.com/LusterSourav/how_to_make_evm_from_scratch_in_ru
 
 [workspace.dependencies]
 hex = "0.4"
+bare-metal-evm-types = { path = "crates/bare-metal-evm-types", version = "0.2.0" }
+bare-metal-evm-keccak = { path = "crates/bare-metal-evm-keccak", version = "0.2.0" }
+bare-metal-evm-nibble = { path = "crates/bare-metal-evm-nibble", version = "0.2.0" }
+bare-metal-evm-rlp = { path = "crates/bare-metal-evm-rlp", version = "0.2.0" }
+bare-metal-evm-trie = { path = "crates/bare-metal-evm-trie", version = "0.2.0" }
+bare-metal-evm-state = { path = "crates/bare-metal-evm-state", version = "0.2.0" }
 
 [package]
 name = "bare-metal-evm"
@@ -43,3 +49,11 @@ hex.workspace = true
 [features]
 default = []
 runtime = []
+
+[patch.crates-io]
+bare-metal-evm-types = { path = "crates/bare-metal-evm-types" }
+bare-metal-evm-keccak = { path = "crates/bare-metal-evm-keccak" }
+bare-metal-evm-nibble = { path = "crates/bare-metal-evm-nibble" }
+bare-metal-evm-rlp = { path = "crates/bare-metal-evm-rlp" }
+bare-metal-evm-trie = { path = "crates/bare-metal-evm-trie" }
+bare-metal-evm-state = { path = "crates/bare-metal-evm-state" }
