@@ -71,6 +71,69 @@ The workspace root crate (`bare-metal-evm`) re-exports everything for convenienc
 
 ---
 
+## v0.2.0 — World State (MPT + Account Model)
+
+> Released 2026-06-01. Closes [#10](https://github.com/LusterSourav/how_to_make_evm_from_scratch_in_rust_by_love/issues/10), [PR #15](https://github.com/LusterSourav/how_to_make_evm_from_scratch_in_rust_by_love/pull/15).
+
+Six crates that build Ethereum's World State (σ): an address-keyed MPT
+that commits to nonce, balance, code, and per-account storage, with a
+journal for checkpoint/rollback.
+
+### Crates in this release
+
+- `bare-metal-evm-types`  — U256, U512
+- `bare-metal-evm-keccak` — Keccak-256
+- `bare-metal-evm-nibble` — u4 nibbles + HP encoding
+- `bare-metal-evm-rlp`    — RLP encode/decode
+- `bare-metal-evm-trie`   — Merkle Patricia Trie
+- `bare-metal-evm-state`  — WorldState, Account, Journal
+
+All `#![no_std]`, `#![deny(unsafe_code)]`, zero external deps.
+
+### Stats
+
+| | |
+|---|---|
+| Tests | 300 |
+| Lines (src, ex. lib.rs) | 7,191 |
+| Crates | 6 |
+
+`cargo test --workspace` and `cargo clippy -- -D warnings` both clean.
+
+### What's new since 0.1.0
+
+- MPT with HP encoding and inline-node optimization
+- WorldState with cache-then-commit and EIP-158 pruning
+- Journal/rollback, depth-capped at 4096
+- Trie root preserved on DB error
+- `set_code(addr, code)` now hashes for you
+- Typed `NibbleError` replaces `Result<(), ()>` in nibble ops
+- Keccak-256 XOR block bounds: `debug_assert` → `assert`
+- Removed dead public API (`drain`, `split_first`, `split_at`)
+
+### Install
+
+```toml
+[dependencies]
+bare-metal-evm-types  = "0.2.0"
+bare-metal-evm-keccak = "0.2.0"
+bare-metal-evm-nibble = "0.2.0"
+bare-metal-evm-rlp    = "0.2.0"
+bare-metal-evm-trie   = "0.2.0"
+bare-metal-evm-state  = "0.2.0"
+```
+
+### OCI (ghcr.io)
+
+```bash
+docker pull ghcr.io/lustersourav/how_to_make_evm_from_scratch_in_rust_by_love/bare-metal-evm-types:0.2.0
+# ... 5 more, one per crate
+```
+
+The full release notes also live on the [GitHub release page](https://github.com/LusterSourav/how_to_make_evm_from_scratch_in_rust_by_love/releases/tag/v0.2.0).
+
+---
+
 # The Physics (Implemented)
 
 > *These are the parts of the machine already written, tested, and shipped.*
