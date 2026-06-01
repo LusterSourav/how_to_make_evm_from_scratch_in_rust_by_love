@@ -1,0 +1,42 @@
+name: Publish packages to ghcr.io
+
+on:
+  workflow_dispatch:
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package all crates
+        run: |
+          for crate in bare-metal-evm-types bare-metal-evm-keccak bare-metal-evm-nibble bare-metal-evm-rlp bare-metal-evm-trie bare-metal-evm-state; do
+            cargo package -p "$crate" --no-verify --allow-dirty
+          done
+
+      - name: Build and push OCI images to ghcr.io
+        env:
+          IMAGE_TAG: 0.2.0
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          OWNER_LOWER=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          REPO_LOWER=$(echo "$REPO" | tr '[:upper:]' '[:lower:]')
+          for crate in bare-metal-evm-types bare-metal-evm-keccak bare-metal-evm-nibble bare-metal-evm-rlp bare-metal-evm-trie bare-metal-evm-state; do
+            IMAGE="ghcr.io/${OWNER_LOWER}/${REPO_LOWER}/${crate}:${IMAGE_TAG}"
+            echo "==> Building $IMAGE"
+            printf 'FROM scratch\nCOPY target/package/%s-0.2.0.crate /%s-0.2.0.crate\n' "$crate" "$crate" > /tmp/Dockerfile
+            docker build -t "$IMAGE" -f /tmp/Dockerfile .
+            docker push "$IMAGE"
+          done
