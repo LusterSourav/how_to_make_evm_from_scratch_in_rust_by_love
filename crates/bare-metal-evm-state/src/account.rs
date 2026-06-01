@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 
-use crate::rlp::{decode_strict, encode_list, encode_str, encode_u256, RlpItem};
-use crate::U256;
+use bare_metal_evm_rlp::{decode_strict, encode_list, encode_str, encode_u256, RlpItem};
+use bare_metal_evm_types::U256;
 
 /// `keccak256(b"")` — hash of empty EVM bytecode.
 pub const EMPTY_CODE_HASH: [u8; 32] = [
@@ -24,15 +24,23 @@ pub struct Account {
 impl Account {
     /// Create a new empty account.
     #[must_use]
-    pub fn new_empty() -> Self {
+    pub const fn new_empty() -> Self {
         Self {
             nonce: U256::zero(),
             balance: U256::zero(),
-            storage_root: crate::trie::EMPTY_ROOT_HASH,
+            storage_root: bare_metal_evm_trie::EMPTY_ROOT_HASH,
             code_hash: EMPTY_CODE_HASH,
         }
     }
+}
 
+impl Default for Account {
+    fn default() -> Self {
+        Self::new_empty()
+    }
+}
+
+impl Account {
     /// Encode this account as RLP bytes.
     #[must_use]
     pub fn encode(&self) -> Vec<u8> {
@@ -44,7 +52,7 @@ impl Account {
     }
 
     /// Decode an account from RLP bytes.
-    #[allow(clippy::result_unit_err)]
+    #[allow(clippy::result_unit_err, clippy::missing_errors_doc)]
     pub fn decode(data: &[u8]) -> Result<Self, ()> {
         let item = decode_strict(data).map_err(|_| ())?;
         match item {
@@ -57,7 +65,7 @@ impl Account {
                         arr.copy_from_slice(s);
                         arr
                     }
-                    _ => return Err(()),
+                    RlpItem::Str(_) | RlpItem::List(_) => return Err(()),
                 };
                 let code_hash = match &items[3] {
                     RlpItem::Str(s) if s.len() == 32 => {
@@ -65,7 +73,7 @@ impl Account {
                         arr.copy_from_slice(s);
                         arr
                     }
-                    _ => return Err(()),
+                    RlpItem::Str(_) | RlpItem::List(_) => return Err(()),
                 };
                 Ok(Self {
                     nonce,
@@ -74,7 +82,7 @@ impl Account {
                     code_hash,
                 })
             }
-            _ => Err(()),
+            RlpItem::Str(_) | RlpItem::List(_) => Err(()),
         }
     }
 }
@@ -86,18 +94,23 @@ fn rlp_to_u256(item: &RlpItem) -> Result<U256, ()> {
             if s.len() > 32 {
                 return Err(());
             }
+            // Reject leading zeros (non-canonical RLP)
+            if s.len() > 1 && s[0] == 0 {
+                return Err(());
+            }
             let mut bytes = [0u8; 32];
             bytes[32 - s.len()..].copy_from_slice(s);
             Ok(U256::from_bytes_be(bytes))
         }
-        _ => Err(()),
+        RlpItem::List(_) => Err(()),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::keccak::keccak256;
+    use alloc::vec;
+    use bare_metal_evm_keccak::keccak256;
 
     #[test]
     fn empty_account_roundtrip() {
@@ -145,7 +158,7 @@ mod tests {
     #[test]
     fn rlp_to_u256_edge_cases() {
         let acc = Account {
-            nonce: crate::U256_MAX,
+            nonce: bare_metal_evm_types::U256_MAX,
             balance: U256::zero(),
             storage_root: [0xabu8; 32],
             code_hash: [0xcdu8; 32],
@@ -153,5 +166,21 @@ mod tests {
         let encoded = acc.encode();
         let decoded = Account::decode(&encoded).unwrap();
         assert_eq!(acc, decoded);
+    }
+
+    #[test]
+    fn rlp_to_u256_rejects_leading_zeros() {
+        use bare_metal_evm_rlp::encode_list;
+
+        let nonce_rlp = encode_u256(&U256::zero());
+        // Manually construct balance with leading zero byte 0x82,0x00,0x01
+        let balance_rlp = vec![0x82, 0x00, 0x01];
+        let storage_root = [0xabu8; 32];
+        let storage_root_rlp = encode_str(&storage_root);
+        let code_hash = [0xcdu8; 32];
+        let code_hash_rlp = encode_str(&code_hash);
+        let encoded =
+            encode_list(&[&nonce_rlp, &balance_rlp, &storage_root_rlp, &code_hash_rlp]);
+        assert!(Account::decode(&encoded).is_err());
     }
 }

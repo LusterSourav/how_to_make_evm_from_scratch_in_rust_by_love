@@ -3,3 +3,8 @@
 *.swp
 *.swo
 *~
+.vscode/
+.idea/
+*.bak
+Thumbs.db
+*.opencode/

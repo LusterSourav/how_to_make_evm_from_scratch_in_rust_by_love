@@ -1,14 +1,11 @@
-extern crate alloc;
+// Only compiled when the `runtime` feature is off. With `runtime` on,
+// `std` is linked and provides its own panic handler; if we also
+// defined one here, we'd get a duplicate-lang-item error at link time.
+#![cfg(not(feature = "runtime"))]
 
-use core::alloc::Layout;
 use core::panic::PanicInfo;
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    loop {}
-}
-
-#[alloc_error_handler]
-fn alloc_error(_layout: Layout) -> ! {
     loop {}
 }

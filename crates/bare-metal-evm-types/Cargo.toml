@@ -1,0 +1,14 @@
+[package]
+name = "bare-metal-evm-types"
+version = "0.2.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core types for bare-metal-evm: AccountInfo, AccountStatus, U256, U512, and storage error types"
+keywords = ["evm", "ethereum", "types", "no-std", "u256"]
+categories = ["no-std", "data-structures"]
+publish = ["crates-io", "github"]
+
+[dev-dependencies]
+hex.workspace = true

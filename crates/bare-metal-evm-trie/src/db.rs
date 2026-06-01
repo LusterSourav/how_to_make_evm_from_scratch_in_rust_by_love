@@ -2,14 +2,14 @@ use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
 /// Database abstraction for trie node storage.
-#[allow(clippy::result_unit_err)]
+#[allow(clippy::result_unit_err, clippy::missing_errors_doc)]
 pub trait Database: Send + Sync {
     fn get(&self, key: &[u8; 32]) -> Result<Option<Vec<u8>>, ()>;
     fn insert(&mut self, key: [u8; 32], value: Vec<u8>) -> Result<(), ()>;
-    fn remove(&mut self, _key: &[u8; 32]) {}
+    fn remove(&mut self, key: &[u8; 32]) -> Result<(), ()>;
 }
 
-/// In-memory trie node database backed by a BTreeMap.
+/// In-memory trie node database backed by a `BTreeMap`.
 #[derive(Clone, Debug)]
 pub struct MemoryDB {
     store: BTreeMap<[u8; 32], Vec<u8>>,
@@ -17,7 +17,7 @@ pub struct MemoryDB {
 
 impl MemoryDB {
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             store: BTreeMap::new(),
         }
@@ -40,8 +40,9 @@ impl Database for MemoryDB {
         Ok(())
     }
 
-    fn remove(&mut self, key: &[u8; 32]) {
+    fn remove(&mut self, key: &[u8; 32]) -> Result<(), ()> {
         self.store.remove(key);
+        Ok(())
     }
 }
 

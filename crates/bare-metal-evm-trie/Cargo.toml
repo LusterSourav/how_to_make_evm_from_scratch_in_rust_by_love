@@ -1,0 +1,19 @@
+[package]
+name = "bare-metal-evm-trie"
+version = "0.2.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Merkle Patricia Trie implementation with in-memory database backend"
+keywords = ["trie", "merkle", "patricia", "ethereum", "no-std"]
+categories = ["no-std", "data-structures"]
+publish = ["crates-io", "github"]
+
+[dependencies]
+bare-metal-evm-keccak = { path = "../bare-metal-evm-keccak", version = "0.2.0" }
+bare-metal-evm-nibble = { path = "../bare-metal-evm-nibble", version = "0.2.0" }
+bare-metal-evm-rlp = { path = "../bare-metal-evm-rlp", version = "0.2.0" }
+
+[dev-dependencies]
+hex.workspace = true

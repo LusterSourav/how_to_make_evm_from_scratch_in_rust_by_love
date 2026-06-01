@@ -1,0 +1,47 @@
+# Cargo registry configuration for this workspace.
+#
+# Two registries are configured:
+#
+# 1. `crates-io` -- the default registry, used automatically by
+#    `cargo publish` with no flag. Requires a `CARGO_TOKEN` secret
+#    set on GitHub Actions to publish. Crates appear at
+#    crates.io/crates/bare-metal-evm-* for public discovery.
+#
+# 2. `github` -- a self-hosted, git-based registry living in this
+#    same repository. The `cargo-registry` branch of this repo holds
+#    a Cargo index (`config.json` + one file per crate under
+#    `ke/cc/keccak`-style paths). The `dl` URL in `config.json`
+#    points at GitHub Releases of this repo, so `.crate` files are
+#    served as release assets.
+#
+# The `github` registry is an opt-in fallback for users who want to
+# depend on the project without going through crates.io. To use it,
+# they add a `.cargo/config.toml` to their project:
+#
+#     [source.crates-io]
+#     replace-with = "github"
+#
+# Publishing flow for the `github` registry (manual, no CI):
+#
+#   # One-time: create the cargo-registry branch
+#   ./scripts/setup-cargo-registry-branch.sh
+#
+#   # Per release, in dependency order
+#   cargo login --registry github   # token: a GitHub PAT with `repo` scope
+#   cargo publish -p bare-metal-evm-types --registry github
+#   cargo publish -p bare-metal-evm-keccak --registry github
+#   cargo publish -p bare-metal-evm-nibble --registry github
+#   cargo publish -p bare-metal-evm-rlp    --registry github
+#   cargo publish -p bare-metal-evm-trie   --registry github
+#   cargo publish -p bare-metal-evm-state  --registry github
+#
+# Each `cargo publish` will:
+#   1. Build the .crate tarball
+#   2. Try to upload it to the `dl` URL (GitHub Releases).
+#      NOTE: cargo uses HTTP PUT, which GitHub Releases does NOT
+#      accept directly. See the workaround in RELEASE.md.
+#   3. Push a `publish/<crate>-<version>` branch to the index repo
+#      with the new index entry. You then merge it into
+#      `cargo-registry`.
+[registries]
+github = { index = "https://github.com/LusterSourav/how_to_make_evm_from_scratch_in_rust_by_love.git#cargo-registry" }

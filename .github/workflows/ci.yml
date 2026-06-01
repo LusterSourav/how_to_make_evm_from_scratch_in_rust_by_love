@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+
+      - run: cargo check --workspace
+      - run: cargo check --workspace --all-features
+      - run: cargo test --workspace
+      - run: cargo test --workspace --features runtime
+      - run: cargo clippy --workspace --all-features -- -D warnings
+      - run: cargo fmt --check
+
+  publish-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+
+      - name: cargo publish --dry-run (types)
+        run: cargo publish -p bare-metal-evm-types --dry-run --allow-dirty
+      - name: cargo publish --dry-run (keccak)
+        run: cargo publish -p bare-metal-evm-keccak --dry-run --allow-dirty
+      - name: cargo publish --dry-run (nibble)
+        run: cargo publish -p bare-metal-evm-nibble --dry-run --allow-dirty
+      - name: cargo publish --dry-run (rlp)
+        run: cargo publish -p bare-metal-evm-rlp --dry-run --allow-dirty
+      - name: cargo publish --dry-run (trie)
+        run: cargo publish -p bare-metal-evm-trie --dry-run --allow-dirty
+      - name: cargo publish --dry-run (state)
+        run: cargo publish -p bare-metal-evm-state --dry-run --allow-dirty
+
+  publish:
+    name: Publish to crates.io and GitHub Packages
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Publish to crates.io (dependency order)
+        run: |
+          set -e
+          cargo publish -p bare-metal-evm-types  --token "$CARGO_TOKEN"
+          cargo publish -p bare-metal-evm-keccak --token "$CARGO_TOKEN"
+          cargo publish -p bare-metal-evm-nibble --token "$CARGO_TOKEN"
+          cargo publish -p bare-metal-evm-rlp    --token "$CARGO_TOKEN"
+          cargo publish -p bare-metal-evm-trie   --token "$CARGO_TOKEN"
+          cargo publish -p bare-metal-evm-state  --token "$CARGO_TOKEN"
+        env:
+          CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
+
+      - name: Publish to GitHub Packages (dependency order)
+        run: |
+          set -e
+          cargo publish -p bare-metal-evm-types  --registry github
+          cargo publish -p bare-metal-evm-keccak --registry github
+          cargo publish -p bare-metal-evm-nibble --registry github
+          cargo publish -p bare-metal-evm-rlp    --registry github
+          cargo publish -p bare-metal-evm-trie   --registry github
+          cargo publish -p bare-metal-evm-state  --registry github
+        env:
+          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN }}

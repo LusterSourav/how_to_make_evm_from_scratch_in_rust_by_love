@@ -4,14 +4,12 @@ use core::fmt;
 pub const U256_MAX: U256 = U256([!0u64; 4]);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct U256(pub [u64; 4]);
+pub struct U256(pub(crate) [u64; 4]);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct U512(pub [u64; 8]);
+pub struct U512(pub(crate) [u64; 8]);
 
-// ============================================================
 // U256 — Core methods
-// ============================================================
 
 impl U256 {
     #[must_use]
@@ -67,8 +65,8 @@ impl U256 {
     }
 
     /// Return the big-endian byte representation.
-    /// The least-significant limb (limbs[0]) becomes the trailing bytes,
-    /// and the most-significant limb (limbs[3]) becomes the leading bytes.
+    /// The least-significant limb (limbs `[0]`) becomes the trailing bytes,
+    /// and the most-significant limb (limbs `[3]`) becomes the leading bytes.
     #[must_use]
     pub fn to_bytes_be(&self) -> [u8; 32] {
         let mut bytes = self.to_bytes_le();
@@ -124,9 +122,7 @@ impl U256 {
     }
 }
 
-// ============================================================
 // U256 — Display
-// ============================================================
 
 impl fmt::Display for U256 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -158,9 +154,7 @@ impl fmt::UpperHex for U256 {
     }
 }
 
-// ============================================================
 // U256 — Ordering
-// ============================================================
 
 impl PartialOrd for U256 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -171,18 +165,16 @@ impl PartialOrd for U256 {
 impl Ord for U256 {
     fn cmp(&self, other: &Self) -> Ordering {
         for i in (0..4).rev() {
-            match self.0[i].cmp(&other.0[i]) {
-                Ordering::Equal => continue,
-                other => return other,
+            let ord = self.0[i].cmp(&other.0[i]);
+            if ord != Ordering::Equal {
+                return ord;
             }
         }
         Ordering::Equal
     }
 }
 
-// ============================================================
 // U512 — Core methods
-// ============================================================
 
 impl U512 {
     #[must_use]
@@ -229,6 +221,16 @@ impl U512 {
         U256([self.0[4], self.0[5], self.0[6], self.0[7]])
     }
 
+    /// Returns `true` if the upper 256 bits of the value are all zero —
+    /// i.e. the value fits in a `U256` without truncation.
+    #[must_use]
+    pub const fn high_is_zero(&self) -> bool {
+        self.0[4] == 0
+            && self.0[5] == 0
+            && self.0[6] == 0
+            && self.0[7] == 0
+    }
+
     #[must_use]
     pub const fn is_zero(&self) -> bool {
         self.0[0] == 0
@@ -239,6 +241,41 @@ impl U512 {
             && self.0[5] == 0
             && self.0[6] == 0
             && self.0[7] == 0
+    }
+
+    #[must_use]
+    pub fn to_bytes_le(&self) -> [u8; 64] {
+        let mut bytes = [0u8; 64];
+        for i in 0..8 {
+            let limb_bytes = self.0[i].to_le_bytes();
+            bytes[i * 8..i * 8 + 8].copy_from_slice(&limb_bytes);
+        }
+        bytes
+    }
+
+    #[must_use]
+    pub fn to_bytes_be(&self) -> [u8; 64] {
+        let mut bytes = self.to_bytes_le();
+        bytes.reverse();
+        bytes
+    }
+
+    #[must_use]
+    pub fn from_bytes_be(bytes: [u8; 64]) -> Self {
+        let mut le = bytes;
+        le.reverse();
+        Self::from_bytes_le(le)
+    }
+
+    #[must_use]
+    pub fn from_bytes_le(bytes: [u8; 64]) -> Self {
+        let mut limbs = [0u64; 8];
+        for i in 0..8 {
+            let mut limb_bytes = [0u8; 8];
+            limb_bytes.copy_from_slice(&bytes[i * 8..i * 8 + 8]);
+            limbs[i] = u64::from_le_bytes(limb_bytes);
+        }
+        Self(limbs)
     }
 }
 
@@ -269,5 +306,23 @@ impl fmt::UpperHex for U512 {
             "{:016X}{:016X}{:016X}{:016X}{:016X}{:016X}{:016X}{:016X}",
             self.0[7], self.0[6], self.0[5], self.0[4], self.0[3], self.0[2], self.0[1], self.0[0],
         )
+    }
+}
+
+impl Ord for U512 {
+    fn cmp(&self, other: &Self) -> Ordering {
+        for i in (0..8).rev() {
+            match self.0[i].cmp(&other.0[i]) {
+                Ordering::Equal => continue,
+                ord => return ord,
+            }
+        }
+        Ordering::Equal
+    }
+}
+
+impl PartialOrd for U512 {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }

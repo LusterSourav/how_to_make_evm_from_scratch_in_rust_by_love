@@ -1,5 +1,4 @@
 // Bare Metal EVM — RLP Encoding/Decoding (Layer 1)
-// ===================================================
 // Recursive Length Prefix — Ethereum's universal serialization format.
 //
 // Encoding rules (five prefix ranges):
@@ -15,23 +14,19 @@
 use alloc::vec::Vec;
 use core::fmt;
 
-// ============================================================
 // RLP item — decode result
-// ============================================================
 
 /// A decoded RLP item — either a string (byte slice) or a list of sub-items.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RlpItem<'a> {
     Str(&'a [u8]),
     List(Vec<RlpItem<'a>>),
 }
 
-// ============================================================
 // Errors
-// ============================================================
 
 /// Errors that can occur during RLP decoding.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum RlpError {
     /// Input is too short to contain the declared payload.
@@ -51,22 +46,21 @@ impl core::error::Error for RlpError {}
 impl fmt::Display for RlpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RlpError::Truncated => write!(f, "RLP input truncated"),
-            RlpError::InvalidLength => write!(f, "RLP invalid length prefix"),
-            RlpError::LeadingZeros => write!(f, "RLP leading zeros (non-minimal encoding)"),
-            RlpError::TrailingData => write!(f, "RLP trailing data after decoded item"),
-            RlpError::TooDeep => write!(f, "RLP maximum nesting depth exceeded"),
+            Self::Truncated => write!(f, "RLP input truncated"),
+            Self::InvalidLength => write!(f, "RLP invalid length prefix"),
+            Self::LeadingZeros => write!(f, "RLP leading zeros (non-minimal encoding)"),
+            Self::TrailingData => write!(f, "RLP trailing data after decoded item"),
+            Self::TooDeep => write!(f, "RLP maximum nesting depth exceeded"),
         }
     }
 }
 
-// ============================================================
 // Encoding helpers
-// ============================================================
 
 /// Encode the length prefix for an RLP item.
 ///
 /// `prefix` is the base prefix (0x80 for strings, 0xc0 for lists).
+#[allow(clippy::cast_possible_truncation)]
 fn encode_length(len: usize, prefix: u8, out: &mut Vec<u8>) {
     if len < 56 {
         // Short form: single byte prefix + length
@@ -80,8 +74,9 @@ fn encode_length(len: usize, prefix: u8, out: &mut Vec<u8>) {
 }
 
 /// Convert a `usize` to its big-endian byte representation with no leading zeros.
-/// Returns (bytes_array, length) to avoid heap allocation.
-fn usize_to_be_bytes(mut n: usize) -> ([u8; 8], usize) {
+/// Returns (`bytes_array`, length) to avoid heap allocation.
+#[allow(clippy::cast_possible_truncation)]
+const fn usize_to_be_bytes(mut n: usize) -> ([u8; 8], usize) {
     if n == 0 {
         return ([0u8; 8], 1);
     }
@@ -95,9 +90,7 @@ fn usize_to_be_bytes(mut n: usize) -> ([u8; 8], usize) {
     (bytes, 8 - i)
 }
 
-// ============================================================
 // Encoding — public API
-// ============================================================
 
 /// Encode a byte string using RLP.
 #[must_use]
@@ -138,12 +131,8 @@ pub fn encode_list(items: &[&[u8]]) -> Vec<u8> {
 /// Encode a list from an iterator of (encoded) byte slices.
 #[must_use]
 pub fn encode_list_from_iter<'a>(items: impl IntoIterator<Item = &'a [u8]>) -> Vec<u8> {
-    let mut collected = Vec::new();
-    let mut total_len = 0usize;
-    for item in items {
-        total_len += item.len();
-        collected.push(item);
-    }
+    let collected: Vec<&[u8]> = items.into_iter().collect();
+    let total_len: usize = collected.iter().map(|i| i.len()).sum();
     let mut out = Vec::with_capacity(1 + 8 + total_len);
     encode_length(total_len, 0xc0, &mut out);
     for item in &collected {
@@ -152,9 +141,7 @@ pub fn encode_list_from_iter<'a>(items: impl IntoIterator<Item = &'a [u8]>) -> V
     out
 }
 
-// ============================================================
 // Decoding — public API
-// ============================================================
 
 /// Maximum allowed nesting depth for RLP decoding.
 const MAX_DECODE_DEPTH: usize = 128;
@@ -162,6 +149,9 @@ const MAX_DECODE_DEPTH: usize = 128;
 /// Decode a single RLP item from `input`.
 ///
 /// Returns an error if trailing data remains after decoding.
+///
+/// # Errors
+/// Returns [`RlpError::TrailingData`] if the input contains unconsumed data.
 pub fn decode_strict(input: &[u8]) -> Result<RlpItem, RlpError> {
     let (item, consumed) = decode_item(input, 0, 0)?;
     if consumed != input.len() {
@@ -172,13 +162,17 @@ pub fn decode_strict(input: &[u8]) -> Result<RlpItem, RlpError> {
 
 /// Decode a single RLP item from `input`.
 ///
-/// Silently ignores any trailing data after the decoded item.
-/// For consensus-critical parsing, use `decode_strict` instead.
+/// Trailing data at the top level is silently ignored, but lists must still
+/// consume their full payload (inner trailing data is rejected). For
+/// consensus-critical parsing where every byte matters, use `decode_strict`.
+///
+/// # Errors
+/// Returns [`RlpError::Truncated`] if the input ends before the payload.
 pub fn decode(input: &[u8]) -> Result<RlpItem, RlpError> {
     decode_item(input, 0, 0).map(|(item, _consumed)| item)
 }
 
-/// Internal recursive decoder. Returns (item, bytes_consumed).
+/// Internal recursive decoder. Returns (`item`, `bytes_consumed`).
 fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, usize), RlpError> {
     if depth >= MAX_DECODE_DEPTH {
         return Err(RlpError::TooDeep);
@@ -190,15 +184,16 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
 
     let prefix = input[offset];
 
-    // --- Single byte (0x00–0x7f): self-encoding ---
+    // Single byte (0x00–0x7f): self-encoding
     if prefix <= 0x7f {
-        return Ok((RlpItem::Str(&input[offset..offset + 1]), 1));
+        return Ok((RlpItem::Str(&input[offset..=offset]), 1));
     }
 
-    // --- String: short form (0x80–0xb7) ---
+    // String: short form (0x80–0xb7)
     if prefix <= 0xb7 {
         let len = (prefix - 0x80) as usize;
-        if offset + 1 + len > input.len() {
+        let end = offset.checked_add(1 + len).ok_or(RlpError::InvalidLength)?;
+        if end > input.len() {
             return Err(RlpError::Truncated);
         }
         // Strict minimalism: single byte in [0x00, 0x7f] must not use string form
@@ -208,7 +203,7 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
         return Ok((RlpItem::Str(&input[offset + 1..offset + 1 + len]), 1 + len));
     }
 
-    // --- String: long form (0xb8–0xbf) ---
+    // String: long form (0xb8–0xbf)
     if prefix <= 0xbf {
         let len_of_len = (prefix - 0xb7) as usize;
         if offset + 1 + len_of_len > input.len() {
@@ -218,6 +213,10 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
         if len < 56 {
             // Must use short form for lengths < 56
             return Err(RlpError::InvalidLength);
+        }
+        // Leading zero byte in length field is non-minimal
+        if input[offset + 1] == 0 {
+            return Err(RlpError::LeadingZeros);
         }
         let payload_end = (offset + 1 + len_of_len)
             .checked_add(len)
@@ -231,10 +230,11 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
         ));
     }
 
-    // --- List: short form (0xc0–0xf7) ---
+    // List: short form (0xc0–0xf7)
     if prefix <= 0xf7 {
         let payload_len = (prefix - 0xc0) as usize;
-        if offset + 1 + payload_len > input.len() {
+        let end = offset.checked_add(1 + payload_len).ok_or(RlpError::InvalidLength)?;
+        if end > input.len() {
             return Err(RlpError::Truncated);
         }
         let payload = &input[offset + 1..offset + 1 + payload_len];
@@ -246,19 +246,25 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
             items.push(item);
             inner_offset += consumed;
         }
+        if inner_offset != payload.len() {
+            return Err(RlpError::TrailingData);
+        }
         return Ok((RlpItem::List(items), 1 + payload_len));
     }
 
-    // --- List: long form (0xf8–0xff) ---
+    // List: long form (0xf8–0xff)
     // prefix is at least 0xf8 since previous checks passed
     let len_of_len = (prefix - 0xf7) as usize;
     if offset + 1 + len_of_len > input.len() {
         return Err(RlpError::Truncated);
     }
-    let payload_len = be_bytes_to_usize(&input[offset + 1..offset + 1 + len_of_len]);
-    if payload_len < 56 {
-        return Err(RlpError::InvalidLength);
-    }
+        let payload_len = be_bytes_to_usize(&input[offset + 1..offset + 1 + len_of_len]);
+        if payload_len < 56 {
+            return Err(RlpError::InvalidLength);
+        }
+        if input[offset + 1] == 0 {
+            return Err(RlpError::LeadingZeros);
+        }
     let payload_end = (offset + 1 + len_of_len)
         .checked_add(payload_len)
         .ok_or(RlpError::InvalidLength)?;
@@ -274,12 +280,13 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
         items.push(item);
         inner_offset += consumed;
     }
+    if inner_offset != payload.len() {
+        return Err(RlpError::TrailingData);
+    }
     Ok((RlpItem::List(items), 1 + len_of_len + payload_len))
 }
 
-// ============================================================
 // Big-endian byte conversion
-// ============================================================
 
 /// Convert a big-endian byte slice to a usize.
 ///
@@ -293,11 +300,9 @@ fn be_bytes_to_usize(bytes: &[u8]) -> usize {
     result
 }
 
-// ============================================================
 // Convenience: encode a U256 as RLP (big-endian, no leading zeros)
-// ============================================================
 
-use crate::U256;
+use bare_metal_evm_types::U256;
 
 /// Encode a `U256` value to its RLP string representation.
 ///
@@ -319,9 +324,7 @@ pub fn encode_u256(val: &U256) -> Vec<u8> {
     }
 }
 
-// ============================================================
 // Tests
-// ============================================================
 
 #[cfg(test)]
 mod tests {
@@ -331,9 +334,7 @@ mod tests {
         hex::decode(s).unwrap()
     }
 
-    // --------------------------------------------------------
     // String encoding
-    // --------------------------------------------------------
 
     #[test]
     fn encode_single_byte_self_encoding() {
@@ -388,9 +389,7 @@ mod tests {
         assert_eq!(result[2], 0x01);
     }
 
-    // --------------------------------------------------------
     // List encoding
-    // --------------------------------------------------------
 
     #[test]
     fn encode_empty_list() {
@@ -410,7 +409,7 @@ mod tests {
     fn encode_short_list_boundary_55() {
         // 55-byte payload: short form
         let items: Vec<Vec<u8>> = (0..55).map(|_| encode_str(&[0x00])).collect();
-        let refs: Vec<&[u8]> = items.iter().map(|v| v.as_slice()).collect();
+        let refs: Vec<&[u8]> = items.iter().map(Vec::as_slice).collect();
         let result = encode_list(&refs);
         assert_eq!(result[0], 0xf7);
     }
@@ -419,7 +418,7 @@ mod tests {
     fn encode_long_list_56_payload() {
         // 56-byte payload: long form
         let items: Vec<Vec<u8>> = (0..56).map(|_| encode_str(&[0x00])).collect();
-        let refs: Vec<&[u8]> = items.iter().map(|v| v.as_slice()).collect();
+        let refs: Vec<&[u8]> = items.iter().map(Vec::as_slice).collect();
         let result = encode_list(&refs);
         assert_eq!(result[0], 0xf8);
         assert_eq!(result[1], 56);
@@ -438,9 +437,7 @@ mod tests {
         assert_eq!(nested, hex("c6c0c1c0c2c0c0"));
     }
 
-    // --------------------------------------------------------
     // Decoding
-    // --------------------------------------------------------
 
     #[test]
     fn decode_single_byte() {
@@ -495,9 +492,7 @@ mod tests {
         );
     }
 
-    // --------------------------------------------------------
     // Strict minimalism checks
-    // --------------------------------------------------------
 
     #[test]
     fn reject_leading_zero_in_string() {
@@ -517,6 +512,19 @@ mod tests {
     }
 
     #[test]
+    fn reject_long_form_leading_zero_byte_in_length() {
+        // 0xba 0x00 0x01 0x00: long-form string, 3-byte length, but first
+        // length byte is 0x00 — non-minimal encoding. The length is 0x000100 = 256,
+        // which should be encoded as 0xb9 0x01 0x00 (2 bytes, no leading zero).
+        let encoded = alloc::vec![0xba, 0x00, 0x01, 0x00];
+        assert_eq!(decode(&encoded), Err(RlpError::LeadingZeros));
+
+        // Same for list: 0xfa 0x00 0x01 0x00 (long-form list with leading zero)
+        let encoded = alloc::vec![0xfa, 0x00, 0x01, 0x00];
+        assert_eq!(decode(&encoded), Err(RlpError::LeadingZeros));
+    }
+
+    #[test]
     fn decode_long_string() {
         let input = [0xBBu8; 56];
         let encoded = encode_str(&input);
@@ -524,9 +532,7 @@ mod tests {
         assert_eq!(decoded, RlpItem::Str(&input[..]));
     }
 
-    // --------------------------------------------------------
     // Round-trip tests
-    // --------------------------------------------------------
 
     #[test]
     fn roundtrip_string() {
@@ -558,7 +564,7 @@ mod tests {
             alloc::vec![encode_list(&[]), encode_list(&[&encode_str(b"inner")])],
         ];
         for items in &test_cases {
-            let refs: Vec<&[u8]> = items.iter().map(|v| v.as_slice()).collect();
+            let refs: Vec<&[u8]> = items.iter().map(Vec::as_slice).collect();
             let encoded = encode_list(&refs);
             let decoded = decode(&encoded).unwrap();
             let expected_items: Vec<RlpItem> = items
@@ -569,9 +575,7 @@ mod tests {
         }
     }
 
-    // --------------------------------------------------------
     // Error cases
-    // --------------------------------------------------------
 
     #[test]
     fn decode_truncated_string() {
@@ -589,9 +593,7 @@ mod tests {
         assert_eq!(result, Err(RlpError::Truncated));
     }
 
-    // --------------------------------------------------------
     // Strict decoding with trailing data checks
-    // --------------------------------------------------------
 
     #[test]
     fn decode_strict_accepts_exact_input() {
@@ -622,11 +624,10 @@ mod tests {
         assert_eq!(result, Err(RlpError::Truncated));
     }
 
-    // --------------------------------------------------------
     // Recursion depth limits
-    // --------------------------------------------------------
 
     #[test]
+    #[allow(clippy::cast_possible_truncation)]
     fn decode_too_deep_nesting() {
         let mut encoded = alloc::vec![0xc0u8];
         for _ in 0..MAX_DECODE_DEPTH + 10 {
@@ -657,9 +658,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    // --------------------------------------------------------
     // U256 encoding
-    // --------------------------------------------------------
 
     #[test]
     fn encode_u256_zero() {
@@ -686,7 +685,7 @@ mod tests {
     #[test]
     fn encode_u256_limb0_only() {
         // U256 with only the least-significant limb set
-        let val = U256::from_limbs(0x0102030405060708, 0, 0, 0);
+        let val = U256::from_limbs(0x0102_0304_0506_0708, 0, 0, 0);
         let result = encode_u256(&val);
         // Big-endian: 01 02 03 04 05 06 07 08 (8 bytes)
         // 0x80 + 8 = 0x88 -> short string
@@ -706,15 +705,13 @@ mod tests {
         assert_eq!(result, expected);
     }
 
-    // --------------------------------------------------------
     // Long-form list encoding (>255 byte payload)
-    // --------------------------------------------------------
 
     #[test]
     fn encode_long_list_over_255() {
         // 256-byte payload → 0xf9 prefix + 2-byte length (0x01, 0x00)
         let items: Vec<Vec<u8>> = (0..256).map(|_| encode_str(&[0x00])).collect();
-        let refs: Vec<&[u8]> = items.iter().map(|v| v.as_slice()).collect();
+        let refs: Vec<&[u8]> = items.iter().map(Vec::as_slice).collect();
         let result = encode_list(&refs);
         assert_eq!(result[0], 0xf9);
         assert_eq!(result[1], 0x01);
@@ -724,11 +721,124 @@ mod tests {
 
     #[test]
     fn encode_u256_max() {
-        let val = U256([!0u64; 4]);
+        let val = U256::from_limbs(!0, !0, !0, !0);
         let result = encode_u256(&val);
         // U256::MAX to_bytes_be = [0xFF; 32], RLP short string = 0xa0 prefix + 32 bytes
         let mut expected = alloc::vec![0xa0];
         expected.extend_from_slice(&[0xFFu8; 32]);
         assert_eq!(result, expected);
+    }
+
+    // encode_list_from_iter
+    #[test]
+    fn encode_list_from_iter_matches_encode_list() {
+        let cat = encode_str(b"cat");
+        let dog = encode_str(b"dog");
+        let items = alloc::vec![cat.as_slice(), dog.as_slice()];
+        let direct = encode_list(&items);
+        let via_iter = encode_list_from_iter(items);
+        assert_eq!(direct, via_iter);
+    }
+
+    #[test]
+    fn encode_list_from_iter_empty() {
+        let result = encode_list_from_iter(core::iter::empty::<&[u8]>());
+        assert_eq!(result, alloc::vec![0xc0]);
+    }
+
+    // Short list with items consuming less than full payload — triggers inner trailing data
+    #[test]
+    fn decode_short_list_inner_trailing_data() {
+        // Outer list claims payload length 3, but actual remaining bytes are 2.
+        // The inner list header `0xc2` claims 2 bytes, but only 1 byte exists.
+        let input = [0xc4, 0xc2, 0x01];
+        let result = decode_strict(&input);
+        assert!(matches!(result, Err(RlpError::Truncated)));
+    }
+
+    // Long list truncation
+    #[test]
+    fn decode_long_list_truncated() {
+        // f8 + 56 bytes claimed, but only 10 bytes provided
+        let mut input = alloc::vec![0xf8, 56];
+        input.extend_from_slice(&[0x00; 10]);
+        let result = decode_strict(&input);
+        assert_eq!(result, Err(RlpError::Truncated));
+    }
+
+    #[test]
+    fn decode_long_list_missing_length() {
+        let input = [0xff, 0x01, 0x02, 0x03];
+        let result = decode_strict(&input);
+        assert_eq!(result, Err(RlpError::Truncated));
+    }
+
+    #[test]
+    fn decode_long_list_short_form_expected() {
+        let mut input = alloc::vec![0xf8, 55];
+        input.extend_from_slice(&[0x00; 55]);
+        let result = decode_strict(&input);
+        assert_eq!(result, Err(RlpError::InvalidLength));
+    }
+
+    #[test]
+    fn decode_long_list_trailing_data() {
+        let mut input = alloc::vec![0xf8, 56];
+        input.extend_from_slice(&[0x00; 56]);
+        input.push(0xde);
+        let result = decode_strict(&input);
+        assert_eq!(result, Err(RlpError::TrailingData));
+    }
+
+    #[test]
+    fn decode_long_string_payload_truncated() {
+        let mut input = alloc::vec![0xb8, 100];
+        input.extend_from_slice(&[0x00; 50]);
+        let result = decode_strict(&input);
+        assert_eq!(result, Err(RlpError::Truncated));
+    }
+
+    // encode_u256 with explicit zero limbs
+    #[test]
+    fn encode_u256_zero_limbs() {
+        let val = U256::from_limbs(0, 0, 0, 0);
+        let result = encode_u256(&val);
+        assert_eq!(result, alloc::vec![0x80]);
+    }
+
+    // MAX_DECODE_DEPTH + 1 boundary (rejected)
+    #[test]
+    fn decode_depth_exact_max() {
+        let mut encoded = alloc::vec![0xc0u8];
+        // Build nesting at MAX_DECODE_DEPTH + 1 levels to verify rejection
+        for _ in 0..MAX_DECODE_DEPTH {
+            let inner = encoded;
+            encoded = encode_list(&[&inner]);
+        }
+        let result = decode_strict(&encoded);
+        assert_eq!(result, Err(RlpError::TooDeep));
+    }
+
+    #[test]
+    fn decode_depth_one_less_than_max() {
+        let mut encoded = alloc::vec![0xc0u8];
+        for _ in 0..MAX_DECODE_DEPTH - 1 {
+            let inner = encoded;
+            encoded = encode_list(&[&inner]);
+        }
+        let result = decode_strict(&encoded);
+        assert!(result.is_ok());
+    }
+
+    // Long form string with 3-byte length (65536 = 0x10000)
+    #[test]
+    fn encode_long_string_65536() {
+        let input = alloc::vec![0xEFu8; 65536];
+        let result = encode_str(&input);
+        // prefix (0x80 + 55 + 3 = 0xba) + 3 length bytes [0x01, 0x00, 0x00]
+        assert_eq!(result[0], 0xba);
+        assert_eq!(result[1], 0x01);
+        assert_eq!(result[2], 0x00);
+        assert_eq!(result[3], 0x00);
     }
 }

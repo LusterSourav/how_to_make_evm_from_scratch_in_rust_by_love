@@ -2,17 +2,78 @@
 
 > *No crates. No standard library. Just Rust, mathematics, and the Yellow Paper.*
 
+[![License: CC-BY-SA-4.0](https://img.shields.io/badge/License-CC--BY--SA--4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-sa/4.0/)
+[![Rust 1.85+](https://img.shields.io/badge/rust-1.85%2B-blue.svg)](https://www.rust-lang.org)
+[![no_std](https://img.shields.io/badge/no__std-supported-green.svg)](https://docs.rust-embedded.org/book/intro/no-std.html)
+[![zero deps](https://img.shields.io/badge/runtime_dependencies-zero-success.svg)]()
+
+## Status
+
+| Component | Status |
+|---|---|
+| **Layer 0 — Primitive Arithmetic** (`U256`, `U512`, Knuth division) | Shipped |
+| **Layer 1 — Serialization & Sponge** (RLP, HP nibbles, Keccak-256) | Shipped |
+| **Layer 2 — State Management** (MPT, account model, world state, journal) | Shipped |
+| **Layer 3 — Resource Metering** (gas, access lists, 63/64 rule) | Planned |
+| **Layer 4 — Engine Core** (dispatch table, jump map, Z-function, opcodes) | Planned |
+| **Layer 5 — Compliance & Precompiles** (Secp256k1, MODEXP, EOF, EIP-1153) | Planned |
+
+Shipped = implemented and tested. Planned = documented, not built yet.
+
 ---
 
 ## What This Is
 
-This is a fully functional, deterministic Ethereum Virtual Machine built from the ground up in Rust — and I mean *from the ground up*. No `ethers`, no `primitive-types`, no `sha3`, no `secp256k1`. Not even `std`.
+A from-scratch Ethereum Virtual Machine built in Rust. No `ethers`, no `primitive-types`, no `sha3`, no `secp256k1`. Not even `std` by default.
 
-The `#[no_std]` constraint is deliberate. It forces every single primitive to be intentional: panic handlers, memory layout, arithmetic overflow — nothing is assumed, nothing is borrowed. Every component is engineered directly against the [Ethereum Yellow Paper](https://ethereum.github.io/yellowpaper/paper.pdf).
+The `#[no_std]` constraint is deliberate. It forces every primitive to be intentional: panic handlers, memory layout, arithmetic overflow -- nothing is assumed, nothing is borrowed. Every component is engineered directly against the [Ethereum Yellow Paper](https://ethereum.github.io/yellowpaper/paper.pdf).
 
-This isn't a toy EVM or a learning exercise that stops at `ADD` and `MUL`. The goal is a high-assurance, Cancun-era compliant execution engine where every byte of behavior is traceable back to a formal specification. If you've ever wondered what's actually happening inside an EVM — not the abstraction, but the real machine — this is that answer, written in code.
+The goal is a Cancun-era compliant execution engine where every byte of behavior is traceable back to a formal specification.
 
 ---
+
+## Quick Start
+
+```bash
+# Clone
+git clone https://github.com/LusterSourav/how_to_make_evm_from_scratch_in_rust_by_love
+cd how_to_make_evm_from_scratch_in_rust_by_love
+
+# Run the test suite (300+ tests across 6 crates)
+cargo test --workspace
+
+# Run an example
+cargo run --example basic_state
+cargo run --example rlp_encode_decode
+
+# Run with the optional `runtime` feature (std-backed, for host-side testing)
+cargo test --workspace --features runtime
+```
+
+The library is **no_std + zero-dependency** at the workspace level. The `runtime` feature is a small no-op flag kept for documentation purposes — the workspace compiles cleanly on stable Rust (1.85+). For actual bare-metal deployment (`aarch64-unknown-none`, `riscv64imac-unknown-none-elf`, etc.) you will need a nightly toolchain with `-Z build-std=core,alloc`.
+
+---
+
+## Crate Layout
+
+Six focused crates, each with a single responsibility. All are `#![no_std]` + `#![deny(unsafe_code)]` + zero external runtime dependencies.
+
+| Crate | Role |
+|---|---|
+| `bare-metal-evm-types` | 256-bit (`U256`) and 512-bit (`U512`) unsigned integers, all arithmetic, division (Knuth D), byte conversions. |
+| `bare-metal-evm-keccak` | Bit-level Keccak-256 (24-round sponge, correct Ethereum padding). |
+| `bare-metal-evm-rlp` | Recursive Length Prefix encoder/decoder with strict minimalism. |
+| `bare-metal-evm-nibble` | Hex-prefix nibble paths, `u4` abstraction, packed nibble buffers. |
+| `bare-metal-evm-trie` | Modified Merkle Patricia Trie: 4 node types, hexary traversal, inline optimization, depth-bounded recursion. |
+| `bare-metal-evm-state` | Account model, `WorldState` (caches + journal + commit), EIP-158 empty-account pruning, code storage. |
+
+The workspace root crate (`bare-metal-evm`) re-exports everything for convenience.
+
+---
+
+# The Physics (Implemented)
+
+> *These are the parts of the machine already written, tested, and shipped.*
 
 ## 1. The 256-Bit Arithmetic Engine
 
@@ -34,7 +95,7 @@ Each `u64 × u64` product is computed as a `u128` intermediate. This isn't just 
 
 **Schoolbook vs. Karatsuba:** At exactly 256 bits, schoolbook (brute-force) multiplication is faster than Karatsuba. Karatsuba reduces multiplications from O(n²) to O(n^1.585), but at this scale the overhead of the extra additions and subtractions outweighs the savings. Karatsuba pays off at much larger widths — for 256-bit × 256-bit, schoolbook with `u128` partial products is the right call.
 
-The `MULMOD` opcode requires 512-bit intermediate products. Those are handled by extending the same limb-widening logic across eight 64-bit lanes before reducing modulo the divisor.
+The `MULMOD` opcode requires 512-bit intermediate products. Those are handled by extending the same limb-widening logic across eight 64-bit lanes before reducing modulo the divisor — the same code path is exposed as `U256::mul_full(self, rhs) -> U512`.
 
 ### Division — Knuth's Algorithm D
 
@@ -44,9 +105,7 @@ Division is where things get serious. The implementation follows **Knuth's Algor
 2. **Estimation & Refinement** — a quotient digit `q̂` is estimated from the two most significant limbs of the current dividend. The estimate can overshoot by at most two, so a correction loop brings it back into range.
 3. **Unnormalization** — the remainder is right-shifted back to its original scale, undoing the normalization from step one.
 
-It's the right algorithm for this problem, and it's not simple — which is exactly why it's worth doing by hand rather than hiding behind a library.
-
----
+Every step has a `#[assert]` (not `debug_assert!`) guarding the boundary condition, so a regression in release mode fails loudly rather than silently producing wrong results.
 
 ## 2. The `no_std` Environment — Bare Metal Glue
 
@@ -63,19 +122,15 @@ fn panic(_info: &PanicInfo) -> ! {
 }
 ```
 
-If the `alloc` crate is used for any dynamic structures, an `alloc_error_handler` is also required — called when the allocator fails to satisfy a request. In a `no_std` context, the correct response is the same: halt deterministically.
+For actual bare-metal deployment (`aarch64-unknown-none`, etc.), `build-std` is required and the `alloc_error_handler` lang item is provided by the `alloc` crate's default. The `src/lang_items.rs` file is gated on `not(feature = "runtime")` so it doesn't conflict with `std`'s panic handler when running tests on a host.
 
 ### Deterministic Memory
 
-There is no OS heap unless you explicitly bring one. All buffers — the EVM stack, memory, journal, access lists — are either fixed-size arrays or manually managed slices. This guarantees absolute determinism: the same bytecode, same input, same gas limit always produces the same result, on any host architecture, with no dependency on OS memory layout or allocator behavior.
-
-The "100% Correctness Rule" applies here without exception. There is no "mostly correct" in a consensus-critical machine. Every buffer boundary, every overflow, every edge case in the spec is either handled exactly right or the implementation is wrong.
-
----
+There is no OS heap unless you explicitly bring one. All buffers — the trie, journal, account caches — are either fixed-size arrays or manually managed `Vec`s. This guarantees absolute determinism: the same input always produces the same result, on any host architecture, with no dependency on OS memory layout or allocator behavior.
 
 ## 3. Cryptographic Primitives — Bit-Level Surgery
 
-Ethereum's security model rests on two cryptographic foundations: a hash function and an elliptic curve. Both are implemented here without any helper libraries.
+Ethereum's security model rests on two cryptographic foundations: a hash function and an elliptic curve. The hash is implemented here without any helper libraries.
 
 ### Keccak-256 — The Sponge Construction
 
@@ -97,34 +152,6 @@ The permutation runs **24 rounds**, each applying five step mappings to a 5×5 m
 Every rotation offset and round constant is hardcoded from the [Keccak Reference v3.0](https://keccak.team/files/Keccak-reference-3.0.pdf). No shortcuts, no lookup tables borrowed from elsewhere.
 
 > [FIPS 202](https://csrc.nist.gov/publications/detail/fips/202/final) documents the SHA-3 standard. Ethereum's Keccak-256 predates it and uses a different padding rule. Using the wrong padding produces a completely different hash and silently breaks everything downstream.
-
-### Secp256k1 — Finite Field Arithmetic
-
-The `ECRECOVER` precompile — used by virtually every Ethereum transaction — requires real elliptic curve arithmetic over the finite field GF(p). The field prime is:
-
-```
-p = 2²⁵⁶ - 2³² - 977
-```
-
-That specific form makes modular reduction efficient — the subtracted terms are small enough to handle with a few conditional subtractions rather than a full division.
-
-The curve equation is the Short Weierstrass form:
-
-```
-y² = x³ + 7 (mod p)
-```
-
-Every point on the curve satisfies this equation. The **point at infinity** — the identity element of the group — is handled as a special sentinel value. Adding any point to the point at infinity returns that point unchanged, and it's the result of scalar multiplication by zero. Getting this edge case wrong produces silent failures in signature recovery that are nearly impossible to debug.
-
-The implementation covers:
-
-- **Modular inverse** via the Extended Euclidean Algorithm
-- **Point addition** using Short Weierstrass addition formulas
-- **Point doubling** — a separate formula required when both input points are identical
-- **Scalar multiplication** via the double-and-add method
-- **Square roots mod p** — solvable efficiently because `p ≡ 3 (mod 4)`, giving `y = x^((p+1)/4) mod p` directly
-
----
 
 ## 4. State and Serialization
 
@@ -186,9 +213,52 @@ HP encoding resolves the ambiguity between leaf and extension nodes at the nibbl
 
 Nodes whose RLP encoding is less than 32 bytes are embedded directly into their parent rather than stored by hash reference. A node that's only a few bytes doesn't need a 32-byte Keccak pointer — inlining it keeps small tries compact and avoids unnecessary hashing overhead.
 
+#### Depth-Bounded Recursion
+
+`insert` and `remove` recurse with a `depth: usize` counter capped at `MAX_DEPTH = 64` (matching a 32-byte 256-bit key, the largest key the trie can store). An attacker-controlled deeply-nested trie produces `Error::MaxDepth` instead of a stack overflow.
+
+## 5. World State
+
+The `WorldState` is the top-level container for an account-model state:
+
+- **Account cache** (`HashMap<[u8;20], Option<Account>>`) — pending writes, `None` for deletions.
+- **Storage cache** (`HashMap<([u8;20], U256), U256>`) — pending storage writes, keyed by `(address, slot)`.
+- **Code cache** (`HashMap<[u8;32], Vec<u8>>`) — contract bytecode, keyed by Keccak-256 hash.
+- **State trie** + per-account **storage tries** (MPT instances).
+- **Journal** — append-only log of mutations for `checkpoint` / `revert`.
+
+### Commit Pipeline
+
+`commit()` is decomposed into five sub-functions, each responsible for one phase:
+
+1. `commit_storage` — flush pending storage writes to per-account storage tries.
+2. `commit_prune_deleted_storage` — remove storage tries of deleted accounts.
+3. `commit_accounts` — apply EIP-158 empty-account pruning when writing the state trie.
+4. `commit_code` — persist any newly-seen contract code to the database.
+5. `commit_clear_caches` — clear in-memory caches and set the new state root.
+
+This makes each phase independently testable and keeps the main `commit()` readable.
+
+### Journal and Checkpoints
+
+Nested calls (`CALL`, `DELEGATECALL`, `STATICCALL`) create sub-contexts that may revert. When a sub-context reverts, its storage writes and balance changes must be undone — but the gas consumed by that sub-context is *not* returned to the caller.
+
+This is handled with a **journaling system**:
+
+1. Before entering a sub-context, record a **checkpoint** (the current journal length)
+2. Every state mutation (storage write, balance change, account creation) appends an entry to the journal
+3. On `REVERT`, replay the journal backwards from the current end to the checkpoint, undoing each mutation
+4. On success, the journal entries since the checkpoint are simply discarded
+
+The journal is bounded at `MAX_JOURNAL_DEPTH = 4096` — beyond that, `checkpoint()` returns `false` and the caller must commit or revert.
+
 ---
 
-## 5. The Execution Engine
+# The Machine (Planned)
+
+> *These are the higher-level EVM behaviors that will sit on top of the physics. The spec is written, the algorithms are researched, the implementation hasn't started.*
+
+## 6. Execution Engine
 
 ### Machine State
 
@@ -224,7 +294,7 @@ The machine state μ describes what's happening *inside* the current execution c
 | `Ie` | Call depth | Current call stack depth |
 | `Iw` | Write permission | `true` for normal calls, `false` inside `STATICCALL` |
 
-The `Iw` flag is what enforces read-only semantics in static contexts. If `Iw` is `false` and the current opcode would modify state — `SSTORE`, `LOG*`, `CREATE`, `SELFDESTRUCT` — the Z-function triggers an exceptional halt immediately. The flag threads through every nested call spawned from a static context, so the read-only constraint propagates automatically down the call stack.
+The `Iw` flag is what enforces read-only semantics in static contexts. If `Iw` is `false` and the current opcode would modify state — `SSTORE`, `LOG*`, `CREATE`, `SELFDESTRUCT` — the Z-function triggers an exceptional halt immediately.
 
 ### The Fetch-Decode-Execute Loop
 
@@ -249,9 +319,11 @@ The Yellow Paper defines a strict set of conditions under which execution must e
 | `\|μ_s\| - δ_w + α_w > 1024` | Stack overflow — result would exceed the 1024-item limit |
 | State-modifying opcode in `STATICCALL` | Write attempted in a read-only context |
 
-If any condition is true, execution halts immediately. No partial state is committed. The gas is gone. This is the machine's immune system — it's what prevents malformed or malicious bytecode from corrupting the world state.
+If any condition is true, execution halts immediately. No partial state is committed. The gas is gone.
 
-### Gas Calculus — Deep Level
+## 7. Resource Metering
+
+### Gas Calculus — Quadratic Memory
 
 **Quadratic memory expansion** deters memory-based DoS attacks. The exact formula:
 
@@ -261,22 +333,22 @@ G_memory(words) = 3 · words + ⌊words² / 512⌋
 
 Memory isn't allocated by the OS — it's metered by the VM. The quadratic term means a contract trying to allocate gigabytes will exhaust its gas budget long before it gets there.
 
-**The 63/64 Rule (EIP-150)** governs gas forwarding to sub-contexts. A caller must reserve 1/64 of its remaining gas before forwarding the rest to a child call. This ensures the parent context always has enough gas to finalize — clean up, emit logs, write return data — even if the child reverts and consumes everything it was given.
+### The 63/64 Rule (EIP-150)
 
-While the formal stack depth limit is 1024 frames, the 63/64 rule imposes a much tighter *practical* limit. Each frame can forward at most 63/64 of the gas it received. After roughly **340 nested calls**, the forwarded gas per frame drops below the minimum needed to do anything useful — so the effective call depth ceiling is around 340, not 1024. The 1024 limit is a hard safety net; the gas physics hit first.
+A caller must reserve 1/64 of its remaining gas before forwarding the rest to a child call. This ensures the parent context always has enough gas to finalize — clean up, emit logs, write return data — even if the child reverts and consumes everything it was given.
 
-**Tiered state access (EIP-2929)** uses a transaction-wide access list — a `Set` of touched addresses and storage slots. The first access to any address or slot is "cold":
+While the formal stack depth limit is 1024 frames, the 63/64 rule imposes a much tighter *practical* limit. After roughly **340 nested calls**, the forwarded gas per frame drops below the minimum needed to do anything useful.
+
+### Tiered State Access (EIP-2929)
+
+A transaction-wide access list — a `Set` of touched addresses and storage slots. The first access to any address or slot is "cold":
 
 | Access type | Cold cost | Warm cost |
 |-------------|-----------|-----------|
 | Account access | 2600 gas | 100 gas |
 | Storage slot (`SLOAD`) | 2100 gas | 100 gas |
 
-The set is initialized at transaction start with the sender, recipient, precompile addresses, and any addresses declared in the EIP-2930 access list. Every `SLOAD`, `SSTORE`, `CALL`, and `EXT*` opcode checks and updates this set.
-
----
-
-## 6. Advanced Interpreter Optimizations
+## 8. Interpreter Optimizations
 
 ### Function Pointer Dispatch Table
 
@@ -287,112 +359,89 @@ type Handler = fn(&mut Vm) -> Result<(), Error>;
 static DISPATCH: [Handler; 256] = [ /* one entry per opcode byte */ ];
 ```
 
-Indexed directly by the opcode byte, this gives O(1) dispatch and plays nicely with branch predictors since the indirect call target is stable across most execution traces.
+Indexed directly by the opcode byte, this gives O(1) dispatch and plays nicely with branch predictors.
 
 ### Hot Opcode Inlining
 
-`PUSH`, `DUP`, `SWAP`, and `JUMP` account for a disproportionate share of executed instructions in real contract bytecode. Inlining these directly into the execution loop — bypassing the function pointer table entirely for the common case — reduces call overhead and can yield a **30–40% throughput improvement** on hot paths. The tradeoff is code size, which is worth it for opcodes that appear in nearly every contract.
+`PUSH`, `DUP`, `SWAP`, and `JUMP` account for a disproportionate share of executed instructions in real contract bytecode. Inlining these directly into the execution loop — bypassing the function pointer table entirely for the common case — reduces call overhead and can yield a **30–40% throughput improvement** on hot paths.
 
 ### Computed Gotos & Tail Calls
 
-For maximum dispatch performance, the plan includes exploring assembly-based dispatch or tail-call optimization so the CPU's branch predictor can learn opcode *pairs* — e.g., `PUSH1` is almost always followed by `MSTORE` or `ADD`. Eliminating the central dispatch bottleneck for these pairs lets the predictor work with the execution pattern rather than against it, avoiding the pipeline stalls that a central `match` or indirect call creates.
+Eliminating the central dispatch bottleneck for these pairs lets the branch predictor work with the execution pattern rather than against it.
 
----
+## 9. Static Jump Map Analysis
 
-## 7. Enhanced Execution Logic
-
-### Static Jump Map Analysis
-
-Before execution begins, the bytecode is pre-scanned to build a **jump map** — a bitset marking every valid `JUMPDEST` (`0x5B`) location. The critical detail: bytes that appear as `0x5B` inside `PUSH` data are *not* valid jump destinations, even though they look like `JUMPDEST` opcodes. The pre-scan walks the bytecode respecting `PUSH` sizes to distinguish real destinations from data.
+Before execution begins, the bytecode is pre-scanned to build a **jump map** — a bitset marking every valid `JUMPDEST` (`0x5B`) location. The critical detail: bytes that appear as `0x5B` inside `PUSH` data are *not* valid jump destinations.
 
 ```
 PUSH2 0x5B 0x5B   ← these two 0x5B bytes are PUSH data, not JUMPDEST
 JUMPDEST          ← this one is a valid jump target
 ```
 
-The jump map **must be statically generated before execution begins** — checking at runtime on every jump is not sufficient. This is a genuine security boundary required by the Yellow Paper. Without it, a contract could jump into the middle of `PUSH` data and execute arbitrary byte sequences as opcodes.
+The jump map **must be statically generated before execution begins** — checking at runtime on every jump is not sufficient. Without it, a contract could jump into the middle of `PUSH` data and execute arbitrary byte sequences as opcodes.
 
-### State Journaling and Reversion
+## 10. Secp256k1 — Finite Field Arithmetic
 
-Nested calls (`CALL`, `DELEGATECALL`, `STATICCALL`) create sub-contexts that may revert. When a sub-context reverts, its storage writes and balance changes must be undone — but the gas consumed by that sub-context is *not* returned to the caller.
+The `ECRECOVER` precompile — used by virtually every Ethereum transaction — requires real elliptic curve arithmetic over the finite field GF(p). The field prime is:
 
-This is handled with a **journaling system**:
+```
+p = 2²⁵⁶ - 2³² - 977
+```
 
-1. Before entering a sub-context, record a **checkpoint** (the current journal length)
-2. Every state mutation (storage write, balance change, account creation) appends an entry to the journal
-3. On `REVERT`, replay the journal backwards from the current end to the checkpoint, undoing each mutation
-4. On success, the journal entries since the checkpoint are simply discarded
+That specific form makes modular reduction efficient. The curve equation is the Short Weierstrass form:
 
-The journal is a flat append-only log during execution, making checkpoint/rollback O(n) in the number of mutations — fast, predictable, and easy to reason about.
+```
+y² = x³ + 7 (mod p)
+```
 
----
+Coverage will include modular inverse via the Extended Euclidean Algorithm, point addition/doubling, scalar multiplication via double-and-add, and square roots mod p using `y = x^((p+1)/4) mod p` (valid because `p ≡ 3 (mod 4)`).
 
-## 8. Log Processing and Bloom Filters
+## 11. Log Processing and Bloom Filters
 
-Contract events (`LOG0`–`LOG4`) produce structured log entries that get committed to the transaction receipt.
+Contract events (`LOG0`–`LOG4`) produce structured log entries committed to the transaction receipt. **Bloom filter construction** allows efficient log searching without scanning the full chain. For every address and topic in a log entry, exactly **3 bits** are set in a 2048-bit filter. The bit positions are derived deterministically from the low-order 11 bits of each of the first three pairs of bytes of the Keccak-256 hash.
 
-**Each log entry contains:**
-
-- The address of the contract that emitted it
-- Up to 4 topics (32-byte indexed words, used for filtering)
-- An unindexed data payload of arbitrary length
-
-**Bloom filter construction** allows efficient log searching without scanning the full chain. For every address and topic in a log entry, exactly **3 bits** are set in a 2048-bit filter. The bit positions are derived deterministically: take the Keccak-256 hash of the address or topic, then extract the **low-order 11 bits** from each of the first three pairs of bytes. Those three 11-bit values (each in range 0–2047) are the bit indices to set.
-
-The result is a probabilistic index — a block's bloom filter can quickly rule out blocks that don't contain a given address or topic, with no false negatives and a small, bounded false positive rate. Searching for a specific event across thousands of blocks becomes a bitwise AND operation rather than a full scan.
-
----
-
-## 9. Modern EIP Support — Cancun and Beyond
+## 12. Modern EIP Support — Cancun and Beyond
 
 ### Transient Storage — EIP-1153
 
-`TSTORE` and `TLOAD` operate on storage that exists only for the duration of a transaction — initialized to zero at the start, discarded at the end. No persistence, no cross-transaction state, no gas refunds.
-
-This is the clean solution for re-entrancy guards in DeFi: instead of paying cold `SSTORE` costs to set and clear a mutex, you pay the much cheaper transient storage cost. It also enables "flash accounting" patterns where intermediate balances are tracked transiently and only the final state is committed to persistent storage.
+`TSTORE` and `TLOAD` operate on storage that exists only for the duration of a transaction — initialized to zero at the start, discarded at the end. The clean solution for re-entrancy guards in DeFi.
 
 ### EVM Object Format — EIP-3540 / EIP-3541
 
-EOF separates code from data at the container level, with a structured header declaring code sections, data sections, and type information. The immediate benefit: `JUMPDEST` analysis becomes unnecessary because valid jump targets are declared statically in the container header — the runtime never needs to scan bytecode.
+EOF separates code from data at the container level, with a structured header declaring code sections, data sections, and type information. EIP-3541 rejects new contracts whose bytecode starts with `0xEF`, reserving that byte for the EOF container format.
 
-EIP-3541 (already active) rejects new contracts whose bytecode starts with `0xEF`, reserving that byte for the EOF container format. This is implemented as a deploy-time check in the contract creation logic.
+## 13. Future Research — Parallel Execution
 
----
+**Optimistic Concurrency Control (OCC)** — execute independent transactions in parallel, speculatively assuming no conflicts. After execution, check for state conflicts; re-execute only the conflicting transactions serially.
 
-## 10. Future Research — Parallel Execution
+**Lazy updating** — gas payments to the block beneficiary account are deferred to the end of the block rather than applied after each transaction, removing one of the most common sources of false conflicts.
 
-These aren't on the immediate roadmap, but they're the natural next frontier for a high-performance EVM engine.
+**Pipelined Merkleization** — overlap transaction execution with the rehashing of the Merkle Patricia Trie, hiding Merkleization latency behind execution latency.
 
-**Optimistic Concurrency Control (OCC)** — execute independent transactions in parallel, speculatively assuming no conflicts. After execution, check for state conflicts (two transactions touching the same storage slot). Re-execute only the conflicting transactions serially.
-
-**Lazy updating** is the key enabler: gas payments to the block beneficiary account are deferred to the end of the block rather than applied after each transaction. This removes one of the most common sources of false conflicts between otherwise independent transactions, enabling significantly higher parallel throughput.
-
-**Pipelined Merkleization** — overlap transaction execution with the rehashing of the Merkle Patricia Trie. While the CPU is executing transaction N, a separate pipeline stage computes the updated trie root from transaction N-1's state changes. This hides Merkleization latency behind execution latency, maximizing CPU utilization on multi-core hardware.
-
-**Speculative pre-warming** — transactions are speculatively executed in parallel ahead of the official sequential pass to *predict* which storage slots and accounts will be accessed. Those items are loaded into the warm access set before official execution begins. The speculative results are discarded; only the pre-warming effect is kept. This turns cold accesses into warm ones for the majority of transactions, cutting gas costs and improving throughput simultaneously.
+**Speculative pre-warming** — transactions are speculatively executed in parallel to *predict* which storage slots and accounts will be accessed, loading them into the warm access set before official execution begins.
 
 ---
 
-## 11. The 100% Correctness Rule
+## The 100% Correctness Rule
 
 Because this is a bare metal, consensus-critical implementation, there is no "mostly correct." A few specific invariants that must hold without exception:
 
 - **Strict RLP minimalism** — integers must be big-endian with no leading zeros. A single extra zero byte produces a different trie root and breaks consensus with every other node on the network.
-- **Jump map safety** — the jump map must be statically generated before execution begins. A `0x5B` byte inside `PUSH` data is not a valid jump destination, and the VM must never treat it as one.
-- **Exceptional halting** — all six Z-function conditions must be checked before every instruction. Skipping even one check opens the door to stack corruption, invalid jumps, or write operations inside static contexts.
-- **`no_std` lang items** — a custom `panic_handler` and `alloc_error_handler` must be provided. Without them, the binary is not portable. With them, the machine halts deterministically on any unexpected condition rather than producing undefined behavior.
-- **Gas accounting** — every opcode, every memory expansion, every state access must charge exactly the gas specified by the Yellow Paper and the relevant EIPs. Under-charging breaks the economic model; over-charging breaks compatibility.
+- **Jump map safety** — the jump map must be statically generated before execution begins. A `0x5B` byte inside `PUSH` data is not a valid jump destination.
+- **Exceptional halting** — all six Z-function conditions must be checked before every instruction.
+- **`no_std` lang items** — a custom `panic_handler` must be provided for bare-metal targets.
+- **Gas accounting** — every opcode, every memory expansion, every state access must charge exactly the gas specified by the Yellow Paper and the relevant EIPs.
 
 ---
 
-## 12. Implementation Roadmap
+## Implementation Roadmap
 
 Built layer by layer, each depending only on what's below it:
 
-- [ ] **Layer 0 — Primitive Arithmetic**: `U256` struct, schoolbook multiplication with `u128` limb-widening (`MULX` hint), Knuth's Algorithm D division, two's complement, `no_std` lang items (`panic_handler`, `alloc_error_handler`)
-- [ ] **Layer 1 — Serialization & Sponge**: Recursive RLP encoder/decoder (five prefix ranges, strict minimalism enforced), HP nibble encoding (four prefix flags), bitwise Keccak-256 (24-round sponge permutation, correct Ethereum padding)
-- [ ] **Layer 2 — State Management**: Modified MPT (virtual `u4` nibble iterator, four node types, node splitting surgery, inline optimization), account model, world state σ, state journaling and checkpoint/rollback
-- [ ] **Layer 3 — Resource Metering**: Quadratic memory gas formula, EIP-2929 warm/cold access sets with deterministic bit-selection, EIP-150 63/64 rule for sub-call gas forwarding
+- [x] **Layer 0 — Primitive Arithmetic**: `U256`/`U512`, schoolbook multiplication with `u128` limb-widening (`MULX` hint), Knuth's Algorithm D division, two's complement, `no_std` panic handler
+- [x] **Layer 1 — Serialization & Sponge**: Recursive RLP encoder/decoder (five prefix ranges, strict minimalism), HP nibble encoding (four prefix flags), bitwise Keccak-256 (24-round sponge permutation, correct Ethereum padding)
+- [x] **Layer 2 — State Management**: Modified MPT (virtual `u4` nibble iterator, four node types, node splitting surgery, inline optimization, depth-bounded recursion), account model, world state σ, state journaling and checkpoint/rollback
+- [ ] **Layer 3 — Resource Metering**: Quadratic memory gas formula, EIP-2929 warm/cold access sets, EIP-150 63/64 rule for sub-call gas forwarding
 - [ ] **Layer 4 — Engine Core**: Function pointer dispatch table, static jump map pre-scanner, Z-function exceptional halting checks, hot opcode inlining (`PUSH`/`DUP`/`SWAP`/`JUMP`), fetch-decode-execute loop, log processing and bloom filter construction
 - [ ] **Layer 5 — Compliance & Precompiles**: All ~144 opcodes, `ECRECOVER` (Secp256k1 point arithmetic over GF(p)), `SHA256`, `RIPEMD160`, `IDENTITY`, `MODEXP`, BN256 operations, transient storage (`TSTORE`/`TLOAD`), EOF container validation (EIP-3540/3541), typed transactions (EIP-2718)
 

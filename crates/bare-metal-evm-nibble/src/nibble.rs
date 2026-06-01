@@ -1,10 +1,31 @@
 use alloc::vec::Vec;
+use core::cmp::min;
 use core::fmt;
 use core::iter::FusedIterator;
 
-// ============================================================
+// Error type
+
+/// Errors that can occur during nibble path operations.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum NibbleError {
+    /// Path or combined length exceeds [`MAX_NIBBLES`].
+    TooLong,
+    /// A byte value is not in the valid nibble range (0..16).
+    InvalidValue,
+}
+
+impl fmt::Display for NibbleError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TooLong => write!(f, "nibble path exceeds maximum length"),
+            Self::InvalidValue => write!(f, "invalid nibble value (must be 0..16)"),
+        }
+    }
+}
+
+impl core::error::Error for NibbleError {}
+
 // Nibble — 4-bit unsigned value (0–15)
-// ============================================================
 
 /// A single 4-bit nibble value in the range `0x0..=0xF`.
 ///
@@ -97,9 +118,7 @@ impl From<Nibble> for u8 {
     }
 }
 
-// ============================================================
 // Nibble extraction — byte ⇄ nibble conversions
-// ============================================================
 
 /// Extract the high (most-significant) nibble from a byte.
 #[inline]
@@ -131,9 +150,7 @@ pub const fn nibbles_to_byte(high: Nibble, low: Nibble) -> u8 {
     (high.0 << 4) | low.0
 }
 
-// ============================================================
 // NibbleIterator — traverse a byte slice as nibbles
-// ============================================================
 
 /// An iterator that yields nibbles from a byte slice.
 ///
@@ -246,7 +263,7 @@ impl Iterator for NibbleIterator<'_> {
             self.front = self.back;
             return None;
         }
-        let idx = self.front + n;
+        let idx = self.front.checked_add(n)?;
         self.front = idx + 1;
         Some(Self::nibble_at(idx, self.bytes[idx >> 1]))
     }
@@ -279,9 +296,7 @@ impl ExactSizeIterator for NibbleIterator<'_> {}
 
 impl FusedIterator for NibbleIterator<'_> {}
 
-// ============================================================
 // Nibble path packing — HP byte-alignment
-// ============================================================
 
 /// Maximum number of bytes needed for a packed nibble path.
 ///
@@ -298,10 +313,34 @@ pub struct NibblePathPacked {
     len: usize,
 }
 
+impl Default for NibblePathPacked {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            inner: [0u8; MAX_PACKED_BYTES],
+            len: 0,
+        }
+    }
+}
+
 impl PartialEq for NibblePathPacked {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.len == other.len && self.inner[..self.len] == other.inner[..other.len]
+    }
+}
+
+impl PartialEq<[u8]> for NibblePathPacked {
+    #[inline]
+    fn eq(&self, other: &[u8]) -> bool {
+        self.as_slice() == other
+    }
+}
+
+impl<const N: usize> PartialEq<&[u8; N]> for NibblePathPacked {
+    #[inline]
+    fn eq(&self, other: &&[u8; N]) -> bool {
+        self.as_slice() == other.as_slice()
     }
 }
 
@@ -421,17 +460,14 @@ const fn pack_nibble_pairs(
 ///
 /// Returns a `NibblePathPacked` with at most [`MAX_PACKED_BYTES`] bytes.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if the path is longer than 64 nibbles (the maximum for a 32-byte
-/// hash, which is the longest key in the MPT).
-#[must_use]
-pub fn encode_nibble_path_padded(path: &[Nibble]) -> NibblePathPacked {
-    assert!(
-        path.len() <= 64,
-        "nibble path cannot exceed 64 nibbles (got {})",
-        path.len(),
-    );
+/// Returns `Err(NibbleError::TooLong)` if the path is longer than 64 nibbles
+/// (the maximum for a 32-byte hash, which is the longest key in the MPT).
+pub fn encode_nibble_path_padded(path: &[Nibble]) -> Result<NibblePathPacked, NibbleError> {
+    if path.len() > 64 {
+        return Err(NibbleError::TooLong);
+    }
 
     let mut inner = [0u8; MAX_PACKED_BYTES];
 
@@ -446,15 +482,13 @@ pub fn encode_nibble_path_padded(path: &[Nibble]) -> NibblePathPacked {
         pack_nibble_pairs(path, 0, 0, &mut inner)
     };
 
-    NibblePathPacked {
+    Ok(NibblePathPacked {
         inner,
         len: byte_count,
-    }
+    })
 }
 
-// ============================================================
 // NibbleBuf — owned unpacked nibble path (max 64 nibbles)
-// ============================================================
 
 /// Maximum number of nibbles in a trie path (32 bytes × 2 = 64 nibbles).
 pub const MAX_NIBBLES: usize = 64;
@@ -468,10 +502,40 @@ pub const MAX_NIBBLES: usize = 64;
 /// # Invariant
 /// All bytes in `inner[..len]` are in `0..16`.
 /// All bytes in `inner[len..]` are zero.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct NibbleBuf {
     pub(crate) inner: [u8; MAX_NIBBLES],
     pub(crate) len: usize,
+}
+
+impl PartialEq for NibbleBuf {
+    fn eq(&self, other: &Self) -> bool {
+        self.len == other.len && self.inner[..self.len] == other.inner[..self.len]
+    }
+}
+
+impl Eq for NibbleBuf {}
+
+impl core::hash::Hash for NibbleBuf {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.inner[..self.len].hash(state);
+    }
+}
+
+impl PartialOrd for NibbleBuf {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// Compare nibble-by-nibble (standard lexicographic order).
+/// Length is only used as a tiebreaker when all shared nibbles are equal.
+impl Ord for NibbleBuf {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.inner[..self.len]
+            .cmp(&other.inner[..other.len])
+            .then_with(|| self.len.cmp(&other.len))
+    }
 }
 
 impl Default for NibbleBuf {
@@ -486,6 +550,8 @@ impl Default for NibbleBuf {
 impl NibbleBuf {
     /// Create from a byte slice, splitting each byte into two nibbles
     /// (high nibble first, then low nibble).
+    ///
+    /// Keys longer than 32 bytes are silently truncated to 64 nibbles.
     #[must_use]
     pub fn from_key(key: &[u8]) -> Self {
         let mut inner = [0u8; MAX_NIBBLES];
@@ -494,29 +560,35 @@ impl NibbleBuf {
             if len >= MAX_NIBBLES {
                 break;
             }
-            inner[len] = b >> 4;
+            inner[len] = high_nibble(b).as_u8();
             len += 1;
             if len >= MAX_NIBBLES {
                 break;
             }
-            inner[len] = b & 0x0f;
+            inner[len] = low_nibble(b).as_u8();
             len += 1;
         }
         Self { inner, len }
     }
 
     /// Create from an existing nibble slice (each byte must be 0..16).
-    /// Longer slices are truncated to [`MAX_NIBBLES`].
-    #[must_use]
-    pub fn from_nibbles(nibbles: &[u8]) -> Self {
-        debug_assert!(
-            nibbles.iter().all(|&b| b < 16),
-            "nibble values must be 0..15"
-        );
+    ///
+    /// # Errors
+    /// Returns `Err(NibbleError::TooLong)` if the slice exceeds [`MAX_NIBBLES`],
+    /// or `Err(NibbleError::InvalidValue)` if any byte is `>= 16`.
+    pub fn from_nibbles(nibbles: &[u8]) -> Result<Self, NibbleError> {
+        if nibbles.len() > MAX_NIBBLES {
+            return Err(NibbleError::TooLong);
+        }
+        if !nibbles.iter().all(|&b| b < 16) {
+            return Err(NibbleError::InvalidValue);
+        }
         let mut inner = [0u8; MAX_NIBBLES];
-        let len = core::cmp::min(nibbles.len(), MAX_NIBBLES);
-        inner[..len].copy_from_slice(&nibbles[..len]);
-        Self { inner, len }
+        inner[..nibbles.len()].copy_from_slice(nibbles);
+        Ok(Self {
+            inner,
+            len: nibbles.len(),
+        })
     }
 
     /// Number of nibbles in this path.
@@ -551,11 +623,30 @@ impl NibbleBuf {
         }
         max
     }
+
+    /// Concatenate two nibble paths.
+    ///
+    /// # Errors
+    /// Returns `Err(NibbleError::TooLong)` if the combined length exceeds [`MAX_NIBBLES`].
+    pub fn merge(&self, other: &Self) -> Result<Self, NibbleError> {
+        if self.len + other.len > MAX_NIBBLES {
+            return Err(NibbleError::TooLong);
+        }
+        let mut inner = [0u8; MAX_NIBBLES];
+        let self_end = min(self.len, MAX_NIBBLES);
+        inner[..self_end].copy_from_slice(&self.inner[..self_end]);
+        let remaining = MAX_NIBBLES - self_end;
+        let other_len = min(other.len, remaining);
+        let other_start = self_end;
+        inner[other_start..other_start + other_len].copy_from_slice(&other.inner[..other_len]);
+        Ok(Self {
+            inner,
+            len: self_end + other_len,
+        })
+    }
 }
 
-// ============================================================
 // Hex-Prefix (HP) encoding — Yellow Paper Appendix C
-// ============================================================
 
 /// Encode a nibble path using HP (Hex-Prefix) encoding.
 ///
@@ -569,25 +660,40 @@ impl NibbleBuf {
 /// | true      | false    | `0x20`    | Leaf, even |
 /// | true      | true     | `0x30 + path[0]` | Leaf, odd |
 #[must_use]
-pub fn hp_encode(path: &[u8], is_leaf: bool) -> Vec<u8> {
+pub fn hp_encode(path: &[u8], is_leaf: bool) -> NibblePathPacked {
+    // SAFETY: `hp_encode` takes raw `&[u8]` so that the trie can pass
+    // `NibbleBuf::as_nibbles()` output directly. Since the input type is
+    // permissive, a caller could accidentally pass a byte >= 16, which would
+    // silently corrupt the output. We use `assert!` (not `debug_assert!`) so
+    // that release builds catch the same condition — the trie depends on
+    // every HP-encoded path being well-formed.
+    assert!(
+        path.iter().all(|&b| b < 16),
+        "hp_encode: nibble path values must be 0..15"
+    );
     let flag_base = if is_leaf { 0x20u8 } else { 0x00u8 };
     let odd = path.len() & 1;
 
+    let mut inner = [0u8; MAX_PACKED_BYTES];
+    let mut idx = 0;
+
     if odd == 1 {
-        let mut out = Vec::with_capacity(1 + path.len() / 2);
-        out.push(flag_base | 0x10 | path[0]);
+        inner[idx] = flag_base | 0x10 | path[0];
+        idx += 1;
         for chunk in path[1..].chunks(2) {
-            out.push((chunk[0] << 4) | chunk[1]);
+            inner[idx] = (chunk[0] << 4) | chunk[1];
+            idx += 1;
         }
-        out
     } else {
-        let mut out = Vec::with_capacity(1 + path.len() / 2);
-        out.push(flag_base);
+        inner[idx] = flag_base;
+        idx += 1;
         for chunk in path.chunks(2) {
-            out.push((chunk[0] << 4) | chunk[1]);
+            inner[idx] = (chunk[0] << 4) | chunk[1];
+            idx += 1;
         }
-        out
     }
+
+    NibblePathPacked { inner, len: idx }
 }
 
 /// Decode an HP-encoded byte string back into nibble path and leaf flag.
@@ -619,9 +725,7 @@ pub fn hp_decode(data: &[u8]) -> (Vec<u8>, bool) {
     (nibbles, is_leaf)
 }
 
-// ============================================================
 // Tests
-// ============================================================
 
 #[cfg(test)]
 mod tests {
@@ -660,9 +764,7 @@ mod tests {
         }
     }
 
-    // --------------------------------------------------------
     // Nibble construction
-    // --------------------------------------------------------
 
     #[test]
     fn nibble_new_valid() {
@@ -696,9 +798,7 @@ mod tests {
         assert_eq!(a, b);
     }
 
-    // --------------------------------------------------------
     // Hex char conversion
-    // --------------------------------------------------------
 
     #[test]
     fn to_hex_char_all_values() {
@@ -711,9 +811,7 @@ mod tests {
         }
     }
 
-    // --------------------------------------------------------
     // Display / Debug / formatting
-    // --------------------------------------------------------
 
     #[test]
     fn nibble_display() {
@@ -758,9 +856,7 @@ mod tests {
         assert_eq!(v, 7);
     }
 
-    // --------------------------------------------------------
     // Nibble extraction
-    // --------------------------------------------------------
 
     #[test]
     fn high_nibble_extraction() {
@@ -812,9 +908,7 @@ mod tests {
         );
     }
 
-    // --------------------------------------------------------
     // NibbleIterator — forward
-    // --------------------------------------------------------
 
     #[test]
     fn iter_empty_slice() {
@@ -903,9 +997,7 @@ mod tests {
         assert_eq!(it.count(), 4);
     }
 
-    // --------------------------------------------------------
     // NibbleIterator — backward (DoubleEndedIterator)
-    // --------------------------------------------------------
 
     #[test]
     fn iter_backward_empty() {
@@ -933,9 +1025,7 @@ mod tests {
         assert_eq!(it.next_back(), None);
     }
 
-    // --------------------------------------------------------
     // NibbleIterator — mixed forward/backward
-    // --------------------------------------------------------
 
     #[test]
     fn iter_mixed_direction() {
@@ -962,9 +1052,7 @@ mod tests {
         assert_eq!(it.peek_back().unwrap().as_u8(), 0xD);
     }
 
-    // --------------------------------------------------------
     // NibbleIterator — nth_back
-    // --------------------------------------------------------
 
     #[test]
     fn iter_nth_back() {
@@ -991,9 +1079,7 @@ mod tests {
         assert!(it.nth_back(0).is_none());
     }
 
-    // --------------------------------------------------------
     // NibbleIterator — fused
-    // --------------------------------------------------------
 
     #[test]
     fn iter_fused_after_exhaustion() {
@@ -1016,9 +1102,7 @@ mod tests {
         assert!(it.next_back().is_none());
     }
 
-    // --------------------------------------------------------
     // NibbleIterator — roundtrip: bytes → nibbles → bytes
-    // --------------------------------------------------------
 
     #[test]
     fn iter_roundtrip_via_nibbles_to_byte() {
@@ -1038,14 +1122,12 @@ mod tests {
         assert_eq!(output, input);
     }
 
-    // --------------------------------------------------------
     // HP padding — encode_nibble_path_padded
-    // --------------------------------------------------------
 
     #[test]
     fn hp_padding_even_path() {
         let path = [Nibble::new(0xA).unwrap(), Nibble::new(0xB).unwrap()];
-        let packed = encode_nibble_path_padded(&path);
+        let packed = encode_nibble_path_padded(&path).unwrap();
         assert_eq!(packed.len(), 2);
         assert_eq!(packed[0], 0x0A);
         assert_eq!(packed[1], 0xB0);
@@ -1058,7 +1140,7 @@ mod tests {
             Nibble::new(0xB).unwrap(),
             Nibble::new(0xC).unwrap(),
         ];
-        let packed = encode_nibble_path_padded(&path);
+        let packed = encode_nibble_path_padded(&path).unwrap();
         assert_eq!(packed.len(), 2);
         assert_eq!(packed[0], 0xAB);
         assert_eq!(packed[1], 0xC0);
@@ -1067,7 +1149,7 @@ mod tests {
     #[test]
     fn hp_padding_single_nibble() {
         let path = [Nibble::new(0xA).unwrap()];
-        let packed = encode_nibble_path_padded(&path);
+        let packed = encode_nibble_path_padded(&path).unwrap();
         assert_eq!(packed.len(), 1);
         assert_eq!(packed[0], 0xA0);
     }
@@ -1075,7 +1157,7 @@ mod tests {
     #[test]
     fn hp_padding_empty_path() {
         let path = [];
-        let packed = encode_nibble_path_padded(&path);
+        let packed = encode_nibble_path_padded(&path).unwrap();
         assert_eq!(packed.len(), 1);
         assert_eq!(packed[0], 0x00);
     }
@@ -1088,7 +1170,7 @@ mod tests {
             Nibble::new(0xC).unwrap(),
             Nibble::new(0xD).unwrap(),
         ];
-        let packed = encode_nibble_path_padded(&path);
+        let packed = encode_nibble_path_padded(&path).unwrap();
         assert_eq!(packed.len(), 3);
         assert_eq!(packed[0], 0x0A);
         assert_eq!(packed[1], 0xBC);
@@ -1102,7 +1184,7 @@ mod tests {
         // The next 31 bytes pair nibbles (1,2), (3,4), ..., (61,62) → 0xFF each.
         // The last byte holds the solo nibble[63](0xF) in high position → 0xF0.
         let path = [Nibble::new_unchecked(0xF); 64];
-        let packed = encode_nibble_path_padded(&path);
+        let packed = encode_nibble_path_padded(&path).unwrap();
         assert_eq!(packed.len(), 33);
         assert_eq!(packed[0], 0x0F);
         for i in 1..32 {
@@ -1118,7 +1200,7 @@ mod tests {
     fn hp_padding_even_path_byte_alignment() {
         // Even path: [A, B] → prepend 0x00 padding → [0x0, A, B] → 2 bytes: [0x0A, 0xB0]
         let path = [Nibble::new(0xA).unwrap(), Nibble::new(0xB).unwrap()];
-        let packed = encode_nibble_path_padded(&path);
+        let packed = encode_nibble_path_padded(&path).unwrap();
         assert_eq!(packed[0], 0x0A);
         assert_eq!(packed[1], 0xB0);
 
@@ -1133,14 +1215,12 @@ mod tests {
         assert_eq!(nibbles, [0x0, 0xA, 0xB, 0x0]);
     }
 
-    // --------------------------------------------------------
     // NibblePathPacked — API
-    // --------------------------------------------------------
 
     #[test]
     fn packed_deref_and_as_ref() {
         let path = [Nibble::new(0xA).unwrap()];
-        let packed = encode_nibble_path_padded(&path);
+        let packed = encode_nibble_path_padded(&path).unwrap();
         let slice: &[u8] = packed.as_slice();
         assert_eq!(slice, &[0xA0]);
         let ref_slice: &[u8] = packed.as_ref();
@@ -1150,7 +1230,7 @@ mod tests {
     #[test]
     fn packed_empty_path_is_one_byte() {
         let path = [];
-        let packed = encode_nibble_path_padded(&path);
+        let packed = encode_nibble_path_padded(&path).unwrap();
         assert_eq!(packed.len(), 1);
         assert!(!packed.is_empty());
     }
@@ -1158,38 +1238,31 @@ mod tests {
     #[test]
     fn packed_debug_format() {
         let path = [Nibble::new(0xA).unwrap(), Nibble::new(0xB).unwrap()];
-        let packed = encode_nibble_path_padded(&path);
+        let packed = encode_nibble_path_padded(&path).unwrap();
         let mut buf = FmtBuffer::new();
         write!(buf, "{packed:?}").unwrap();
         assert_eq!(buf.as_str(), "NibblePathPacked(0a b0)");
     }
 
-    // --------------------------------------------------------
     // NibblePathPacked — buffer length check
-    // --------------------------------------------------------
 
     #[test]
     fn packed_buffer_accessible() {
         let path = [Nibble::new(0xA).unwrap()];
-        let packed = encode_nibble_path_padded(&path);
+        let packed = encode_nibble_path_padded(&path).unwrap();
         let buf: &[u8; MAX_PACKED_BYTES] = packed.buffer();
         assert_eq!(buf[0], 0xA0);
     }
 
-    // --------------------------------------------------------
-    // HP padding — panics on oversized path
-    // --------------------------------------------------------
+    // HP padding — rejects oversized path
 
     #[test]
-    #[should_panic(expected = "nibble path cannot exceed 64 nibbles")]
-    fn hp_padding_panic_on_oversized() {
+    fn hp_padding_rejects_oversized() {
         let path = [Nibble::new_unchecked(0); 65];
-        let _ = encode_nibble_path_padded(&path);
+        assert!(encode_nibble_path_padded(&path).is_err());
     }
 
-    // --------------------------------------------------------
     // HP encoding/decoding
-    // --------------------------------------------------------
 
     #[test]
     fn hp_encode_extension_even() {
@@ -1258,6 +1331,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cast_possible_truncation)]
     fn hp_encode_roundtrip_all_combinations() {
         for is_leaf in [false, true] {
             for len in 0..=32 {
@@ -1282,9 +1356,7 @@ mod tests {
         assert!(!leaf);
     }
 
-    // --------------------------------------------------------
     // NibbleBuf
-    // --------------------------------------------------------
 
     #[test]
     fn nibble_buf_from_key() {
@@ -1301,6 +1373,14 @@ mod tests {
     }
 
     #[test]
+    fn nibble_buf_from_key_full_hash() {
+        // 32 bytes → 64 nibbles (max valid)
+        let data = [0xFFu8; 32];
+        let buf = NibbleBuf::from_key(&data);
+        assert_eq!(buf.len(), 64);
+    }
+
+    #[test]
     fn nibble_buf_from_key_truncation() {
         // 33 bytes → 66 nibbles, truncated to 64
         let data = [0xFFu8; 33];
@@ -1310,7 +1390,7 @@ mod tests {
 
     #[test]
     fn nibble_buf_from_nibbles() {
-        let buf = NibbleBuf::from_nibbles(&[0xa, 0xb, 0xc]);
+        let buf = NibbleBuf::from_nibbles(&[0xa, 0xb, 0xc]).unwrap();
         assert_eq!(buf.len(), 3);
         assert_eq!(buf.as_nibbles(), &[0xa, 0xb, 0xc]);
     }
@@ -1324,34 +1404,88 @@ mod tests {
 
     #[test]
     fn nibble_buf_common_prefix() {
-        let a = NibbleBuf::from_nibbles(&[1, 2, 3, 4]);
-        let b = NibbleBuf::from_nibbles(&[1, 2, 5]);
+        let a = NibbleBuf::from_nibbles(&[1, 2, 3, 4]).unwrap();
+        let b = NibbleBuf::from_nibbles(&[1, 2, 5]).unwrap();
         assert_eq!(a.common_prefix(&b), 2);
 
-        let c = NibbleBuf::from_nibbles(&[1, 2, 3, 4]);
+        let c = NibbleBuf::from_nibbles(&[1, 2, 3, 4]).unwrap();
         assert_eq!(a.common_prefix(&c), 4);
 
-        let d = NibbleBuf::from_nibbles(&[7, 8]);
+        let d = NibbleBuf::from_nibbles(&[7, 8]).unwrap();
         assert_eq!(a.common_prefix(&d), 0);
     }
 
     #[test]
     fn nibble_buf_common_prefix_empty() {
-        let a = NibbleBuf::from_nibbles(&[1, 2, 3]);
+        let a = NibbleBuf::from_nibbles(&[1, 2, 3]).unwrap();
         let b = NibbleBuf::default();
         assert_eq!(a.common_prefix(&b), 0);
     }
 
     #[test]
     fn nibble_buf_clone_eq() {
-        let a = NibbleBuf::from_nibbles(&[0xa, 0xb, 0xc]);
+        let a = NibbleBuf::from_nibbles(&[0xa, 0xb, 0xc]).unwrap();
         let b = a;
         assert_eq!(a, b);
     }
 
-    // --------------------------------------------------------
+    #[test]
+    fn nibble_buf_ord() {
+        let empty = NibbleBuf::default();
+        let a = NibbleBuf::from_nibbles(&[1]).unwrap();
+        let b = NibbleBuf::from_nibbles(&[2]).unwrap();
+        let aa = NibbleBuf::from_nibbles(&[1, 1]).unwrap();
+        let ab = NibbleBuf::from_nibbles(&[1, 2]).unwrap();
+
+        assert!(empty < a, "empty < any");
+        assert!(a < aa, "a (len=1) < aa (len=2)");
+        assert!(a < b, "1 < 2 alphabetically");
+        assert!(aa < ab, "1,1 < 1,2 alphabetically");
+    }
+
+    #[test]
+    fn nibble_buf_merge_basic() {
+        let a = NibbleBuf::from_nibbles(&[1, 2]).unwrap();
+        let b = NibbleBuf::from_nibbles(&[3, 4]).unwrap();
+        let merged = a.merge(&b).unwrap();
+        assert_eq!(merged.len(), 4);
+        assert_eq!(merged.as_nibbles(), &[1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn nibble_buf_merge_with_empty() {
+        let a = NibbleBuf::from_nibbles(&[1, 2]).unwrap();
+        let empty = NibbleBuf::default();
+        assert_eq!(a.merge(&empty).unwrap().as_nibbles(), &[1, 2]);
+        assert_eq!(empty.merge(&a).unwrap().as_nibbles(), &[1, 2]);
+    }
+
+    #[test]
+    fn nibble_buf_merge_exact_max() {
+        let a = NibbleBuf::from_nibbles(&[0xF; 32]).unwrap();
+        let b = NibbleBuf::from_nibbles(&[0xF; 32]).unwrap();
+        let merged = a.merge(&b).unwrap();
+        assert_eq!(merged.len(), 64);
+    }
+
+    #[test]
+    fn from_nibbles_oversized_returns_err() {
+        assert!(NibbleBuf::from_nibbles(&[0; 65]).is_err());
+    }
+
+    #[test]
+    fn from_nibbles_invalid_nibble_returns_err() {
+        assert!(NibbleBuf::from_nibbles(&[16]).is_err());
+    }
+
+    #[test]
+    fn merge_overflow_returns_err() {
+        let a = NibbleBuf::from_nibbles(&[0xF; 50]).unwrap();
+        let b = NibbleBuf::from_nibbles(&[0xF; 50]).unwrap();
+        assert!(a.merge(&b).is_err());
+    }
+
     // Regression: all nibble values roundtrip
-    // --------------------------------------------------------
 
     #[test]
     fn all_nibble_values_roundtrip() {
@@ -1366,9 +1500,7 @@ mod tests {
         }
     }
 
-    // --------------------------------------------------------
     // Regression: iterator over byte boundaries
-    // --------------------------------------------------------
 
     #[test]
     fn iter_cross_byte_sequence() {
@@ -1377,14 +1509,11 @@ mod tests {
         for (i, nibble) in NibbleIterator::new(&bytes).enumerate() {
             assert_eq!(nibble.as_u8(), expected[i], "nibble {i} mismatch");
         }
-        // Also test last
         let it = NibbleIterator::new(&bytes);
         assert_eq!(it.last().unwrap().as_u8(), 0x5);
     }
 
-    // --------------------------------------------------------
     // Regression: Send + Sync (safe for parallel contexts)
-    // --------------------------------------------------------
 
     #[test]
     fn nibble_is_send_sync() {

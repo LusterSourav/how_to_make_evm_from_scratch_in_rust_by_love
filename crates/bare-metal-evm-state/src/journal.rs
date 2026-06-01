@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use crate::U256;
+use bare_metal_evm_types::U256;
 
 /// An atomic change to the world state that can be rolled back.
 #[derive(Clone, Debug, PartialEq)]
@@ -16,10 +16,16 @@ pub enum JournalEntry {
         slot: U256,
         old: U256,
     },
+    /// Contract code was stored in the code cache.
+    CodeChange {
+        address: [u8; 20],
+        hash: [u8; 32],
+        old_present: bool,
+    },
 }
 
 /// An append-only journal with checkpoint-based rollback support.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Journal {
     pub(crate) entries: Vec<JournalEntry>,
     pub(crate) checkpoints: Vec<usize>,
@@ -27,7 +33,7 @@ pub struct Journal {
 
 impl Journal {
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             entries: Vec::new(),
             checkpoints: Vec::new(),
@@ -44,17 +50,27 @@ impl Journal {
         self.entries.pop()
     }
 
+    /// Maximum number of nested checkpoints before `checkpoint` returns `false`.
+    pub const MAX_JOURNAL_DEPTH: usize = 4096;
+
     /// Save the current entry count as a checkpoint.
-    pub fn checkpoint(&mut self) {
+    ///
+    /// Returns `false` if the maximum checkpoint depth has been reached.
+    #[must_use]
+    pub fn checkpoint(&mut self) -> bool {
+        if self.checkpoints.len() >= Self::MAX_JOURNAL_DEPTH {
+            return false;
+        }
         self.checkpoints.push(self.entries.len());
+        true
     }
 
     /// Roll back all entries since the most recent checkpoint.
     /// Returns `false` if no checkpoint exists.
+    #[must_use]
     pub fn rollback(&mut self) -> bool {
-        let target = match self.checkpoints.pop() {
-            Some(t) => t,
-            None => return false,
+        let Some(target) = self.checkpoints.pop() else {
+            return false;
         };
         self.entries.truncate(target);
         true
@@ -62,6 +78,7 @@ impl Journal {
 
     /// Discard the most recent checkpoint without rolling back.
     /// Returns `false` if no checkpoint exists.
+    #[must_use]
     pub fn commit_checkpoint(&mut self) -> bool {
         self.checkpoints.pop().is_some()
     }
@@ -113,7 +130,7 @@ mod tests {
             address: [1u8; 20],
             old: None,
         });
-        j.checkpoint();
+        let _ = j.checkpoint();
         j.push(JournalEntry::AccountChange {
             address: [2u8; 20],
             old: None,
@@ -126,12 +143,12 @@ mod tests {
     #[test]
     fn journal_nested_checkpoints() {
         let mut j = Journal::new();
-        j.checkpoint();
+        let _ = j.checkpoint();
         j.push(JournalEntry::AccountChange {
             address: [1u8; 20],
             old: None,
         });
-        j.checkpoint();
+        let _ = j.checkpoint();
         j.push(JournalEntry::AccountChange {
             address: [2u8; 20],
             old: None,
@@ -152,7 +169,7 @@ mod tests {
     #[test]
     fn journal_commit_checkpoint() {
         let mut j = Journal::new();
-        j.checkpoint();
+        let _ = j.checkpoint();
         j.push(JournalEntry::AccountChange {
             address: [1u8; 20],
             old: None,

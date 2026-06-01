@@ -1,13 +1,44 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/bare-metal-evm-types",
+    "crates/bare-metal-evm-keccak",
+    "crates/bare-metal-evm-rlp",
+    "crates/bare-metal-evm-nibble",
+    "crates/bare-metal-evm-trie",
+    "crates/bare-metal-evm-state",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.85"
+license = "CC-BY-SA-4.0"
+repository = "https://github.com/LusterSourav/how_to_make_evm_from_scratch_in_rust_by_love"
+
+[workspace.dependencies]
+hex = "0.4"
+
 [package]
 name = "bare-metal-evm"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-rust-version = "1.81"
+rust-version = "1.85"
+description = "A zero-dependency, from-scratch Ethereum Virtual Machine implementation for #![no_std] environments"
+license = "CC-BY-SA-4.0"
+repository = "https://github.com/LusterSourav/how_to_make_evm_from_scratch_in_rust_by_love"
+keywords = ["evm", "ethereum", "blockchain", "no-std", "cryptography"]
+categories = ["no-std", "cryptography", "data-structures", "embedded"]
 
 [dependencies]
+bare-metal-evm-types = { path = "crates/bare-metal-evm-types", version = "0.2.0" }
+bare-metal-evm-keccak = { path = "crates/bare-metal-evm-keccak", version = "0.2.0" }
+bare-metal-evm-rlp = { path = "crates/bare-metal-evm-rlp", version = "0.2.0" }
+bare-metal-evm-nibble = { path = "crates/bare-metal-evm-nibble", version = "0.2.0" }
+bare-metal-evm-trie = { path = "crates/bare-metal-evm-trie", version = "0.2.0" }
+bare-metal-evm-state = { path = "crates/bare-metal-evm-state", version = "0.2.0" }
 
 [dev-dependencies]
-hex = "0.4"
+hex.workspace = true
 
 [features]
 default = []
