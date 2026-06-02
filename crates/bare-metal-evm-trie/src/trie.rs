@@ -48,9 +48,10 @@ impl core::error::Error for Error {}
 // Node types
 
 /// A decoded trie node.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Node {
+    #[default]
     Empty,
     Leaf {
         path: NibbleBuf,
@@ -64,12 +65,6 @@ pub enum Node {
         children: [Option<Box<NodeRef>>; 16],
         value: Option<Vec<u8>>,
     },
-}
-
-impl Default for Node {
-    fn default() -> Self {
-        Self::Empty
-    }
 }
 
 /// A reference to a trie node — either empty, a hash pointer, or inlined.
