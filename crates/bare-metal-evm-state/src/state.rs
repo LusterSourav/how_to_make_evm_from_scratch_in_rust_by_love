@@ -149,9 +149,7 @@ impl<D: Database> WorldState<D> {
     ///
     /// Returns [`Error::Decode`] if the underlying account data is malformed.
     pub fn get_nonce(&self, address: &[u8; 20]) -> Result<U256, Error> {
-        Ok(self
-            .get_account(address)?
-            .map_or(U256::zero(), |a| a.nonce))
+        Ok(self.get_account(address)?.map_or(U256::zero(), |a| a.nonce))
     }
 
     /// Convenience: get the code hash of an account. Returns [`crate::account::EMPTY_CODE_HASH`]
@@ -267,7 +265,8 @@ impl<D: Database> WorldState<D> {
                 address,
                 old: trie_old,
             });
-            self.account_cache.insert(address, Some(Account::new_empty()));
+            self.account_cache
+                .insert(address, Some(Account::new_empty()));
         }
         self.journal
             .push(JournalEntry::StorageChange { address, slot, old });
@@ -297,9 +296,7 @@ impl<D: Database> WorldState<D> {
         let account = {
             let key = keccak256(address);
             match self.state_trie.get(&self.db, &key)? {
-                Some(bytes) => {
-                    Account::decode(&bytes).map_err(|()| Error::Decode)?
-                }
+                Some(bytes) => Account::decode(&bytes).map_err(|()| Error::Decode)?,
                 None => return Ok(U256::zero()),
             }
         };
@@ -341,7 +338,10 @@ impl<D: Database> WorldState<D> {
     /// # Deprecated
     /// Use [`set_code`](Self::set_code) instead, which computes the hash
     /// internally and guarantees correctness.
-    #[deprecated(since = "0.2.0", note = "use set_code(address, code) which computes keccak256 internally")]
+    #[deprecated(
+        since = "0.2.0",
+        note = "use set_code(address, code) which computes keccak256 internally"
+    )]
     pub fn set_code_with_hash(&mut self, address: [u8; 20], code_hash: [u8; 32], code: Vec<u8>) {
         let old_present = self.code_cache.contains_key(&code_hash);
         self.journal.push(JournalEntry::CodeChange {
@@ -405,7 +405,9 @@ impl<D: Database> WorldState<D> {
     /// Returns [`Error::Decode`] if the trie is corrupt, or
     /// [`Error::Arithmetic`] on overflow.
     pub fn add_balance(&mut self, address: [u8; 20], amount: U256) -> Result<(), Error> {
-        let mut acc = self.get_account(&address)?.unwrap_or_else(Account::new_empty);
+        let mut acc = self
+            .get_account(&address)?
+            .unwrap_or_else(Account::new_empty);
         acc.balance = acc.balance.checked_add(amount).ok_or(Error::Arithmetic)?;
         self.set_account(address, acc)
     }
@@ -417,7 +419,9 @@ impl<D: Database> WorldState<D> {
     /// Returns [`Error::Decode`] if the trie is corrupt, or
     /// [`Error::Arithmetic`] on underflow.
     pub fn sub_balance(&mut self, address: [u8; 20], amount: U256) -> Result<(), Error> {
-        let mut acc = self.get_account(&address)?.unwrap_or_else(Account::new_empty);
+        let mut acc = self
+            .get_account(&address)?
+            .unwrap_or_else(Account::new_empty);
         acc.balance = acc.balance.checked_sub(amount).ok_or(Error::Arithmetic)?;
         self.set_account(address, acc)
     }
@@ -429,8 +433,13 @@ impl<D: Database> WorldState<D> {
     /// Returns [`Error::Decode`] if the trie is corrupt, or
     /// [`Error::Arithmetic`] on nonce overflow.
     pub fn increment_nonce(&mut self, address: [u8; 20]) -> Result<(), Error> {
-        let mut acc = self.get_account(&address)?.unwrap_or_else(Account::new_empty);
-        acc.nonce = acc.nonce.checked_add(U256::one()).ok_or(Error::Arithmetic)?;
+        let mut acc = self
+            .get_account(&address)?
+            .unwrap_or_else(Account::new_empty);
+        acc.nonce = acc
+            .nonce
+            .checked_add(U256::one())
+            .ok_or(Error::Arithmetic)?;
         self.set_account(address, acc)
     }
 
@@ -480,7 +489,9 @@ impl<D: Database> WorldState<D> {
                 JournalEntry::StorageChange { address, slot, old } => {
                     self.storage_cache.insert((address, slot), old);
                 }
-                JournalEntry::CodeChange { hash, old_present, .. } => {
+                JournalEntry::CodeChange {
+                    hash, old_present, ..
+                } => {
                     if !old_present {
                         self.code_cache.remove(&hash);
                     }
@@ -537,7 +548,11 @@ impl<D: Database> WorldState<D> {
             };
 
             for slot in slots {
-                let val = self.storage_cache.get(&(*addr, *slot)).copied().unwrap_or_default();
+                let val = self
+                    .storage_cache
+                    .get(&(*addr, *slot))
+                    .copied()
+                    .unwrap_or_default();
                 let slot_hash = keccak256(&slot.to_bytes_be());
                 if val.is_zero() {
                     storage_trie.remove(&mut self.db, &slot_hash)?;
@@ -600,7 +615,9 @@ impl<D: Database> WorldState<D> {
     /// Persist contract code cache to the database.
     fn commit_code(&mut self) -> Result<(), Error> {
         for (hash, code) in &self.code_cache {
-            self.db.insert(*hash, code.clone()).map_err(|()| Error::Trie(trie::Error::Database))?;
+            self.db
+                .insert(*hash, code.clone())
+                .map_err(|()| Error::Trie(trie::Error::Database))?;
         }
         Ok(())
     }
@@ -957,9 +974,14 @@ mod tests {
         let slot = U256::from_u64(1);
 
         // Commit account with storage
-        state.set_storage(addr(1), slot, U256::from_u64(42)).unwrap();
+        state
+            .set_storage(addr(1), slot, U256::from_u64(42))
+            .unwrap();
         state.commit().unwrap();
-        assert_eq!(state.get_storage(&addr(1), &slot).unwrap(), U256::from_u64(42));
+        assert_eq!(
+            state.get_storage(&addr(1), &slot).unwrap(),
+            U256::from_u64(42)
+        );
 
         let _ = state.checkpoint();
 
@@ -968,7 +990,9 @@ mod tests {
         assert_eq!(state.get_account(&addr(1)).unwrap(), None);
 
         // Set storage again (auto-creates account)
-        state.set_storage(addr(1), slot, U256::from_u64(99)).unwrap();
+        state
+            .set_storage(addr(1), slot, U256::from_u64(99))
+            .unwrap();
 
         // Rollback — should restore committed account + storage
         state.rollback().unwrap();

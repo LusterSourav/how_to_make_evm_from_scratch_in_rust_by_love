@@ -1,4 +1,4 @@
-use crate::types::{U256, U512, U256_MAX};
+use crate::types::{U256, U256_MAX, U512};
 use core::ops::{
     Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div, Mul,
     MulAssign, Not, Rem, Shl, Shr, Sub, SubAssign,
@@ -319,7 +319,11 @@ impl U256 {
     #[must_use]
     pub fn checked_shl(self, shift: u32) -> Option<Self> {
         if shift >= 256 {
-            return if self.is_zero() { Some(Self::zero()) } else { None };
+            return if self.is_zero() {
+                Some(Self::zero())
+            } else {
+                None
+            };
         }
         let result = self.wrapping_shl(shift);
         // Verify no high bits were lost by reversing the shift.
@@ -334,7 +338,11 @@ impl U256 {
     #[must_use]
     pub fn checked_shr(self, shift: u32) -> Option<Self> {
         if shift >= 256 {
-            return if self.is_zero() { Some(Self::zero()) } else { None };
+            return if self.is_zero() {
+                Some(Self::zero())
+            } else {
+                None
+            };
         }
         Some(self.wrapping_shr(shift))
     }
@@ -438,7 +446,10 @@ impl U256 {
         clippy::explicit_iter_loop
     )]
     fn div_rem_knuth(a: Self, b: Self, n: usize, m: usize) -> (Self, Self) {
-        assert!(n >= m && m >= 2, "div_rem_knuth: n must be >= m and m must be >= 2");
+        assert!(
+            n >= m && m >= 2,
+            "div_rem_knuth: n must be >= m and m must be >= 2"
+        );
 
         let mut u = [0u64; 5];
         u[..n].copy_from_slice(&a.0[..n]);
@@ -490,19 +501,19 @@ impl U256 {
                 let dividend = (u_jn << 64) | u_jn1;
                 let q_est = {
                     let q = dividend / v_n1_wide;
-                    assert!(q <= u128::from(u64::MAX), "div_rem_knuth: quotient estimate exceeds u64::MAX");
+                    assert!(
+                        q <= u128::from(u64::MAX),
+                        "div_rem_knuth: quotient estimate exceeds u64::MAX"
+                    );
                     q as u64
                 };
-                (
-                    q_est,
-                    dividend - u128::from(q_est) * v_n1_wide,
-                )
+                (q_est, dividend - u128::from(q_est) * v_n1_wide)
             };
 
             // D3 refinement — ensure q̂ * v_{m-2} ≤ r̂·b + u_{j+m-2}.
             loop {
                 if r_hat >= (1u128 << 64) {
-                    break;  // r_hat << 64 would overflow; lhs ≤ rhs guaranteed
+                    break; // r_hat << 64 would overflow; lhs ≤ rhs guaranteed
                 }
                 let lhs = u128::from(q_hat) * u128::from(v_n2);
                 let rhs = (r_hat << 64) | u128::from(u[j + m - 2]);
@@ -1146,7 +1157,12 @@ mod tests {
     // U256 byte conversion roundtrip
     #[test]
     fn u256_bytes_roundtrip() {
-        let a = U256::from_limbs(0x0102_0304_0506_0708, 0x090A_0B0C_0D0E_0F10, 0x1112_1314_1516_1718, 0x191A_1B1C_1D1E_1F20);
+        let a = U256::from_limbs(
+            0x0102_0304_0506_0708,
+            0x090A_0B0C_0D0E_0F10,
+            0x1112_1314_1516_1718,
+            0x191A_1B1C_1D1E_1F20,
+        );
         let be = a.to_bytes_be();
         let le = a.to_bytes_le();
         assert_eq!(U256::from_bytes_be(be), a);
@@ -1231,15 +1247,27 @@ mod tests {
     // checked_mul with zero
     #[test]
     fn checked_mul_zero() {
-        assert_eq!(U256::from_u64(42).checked_mul(U256::zero()), Some(U256::zero()));
-        assert_eq!(U256::zero().checked_mul(U256::from_u64(42)), Some(U256::zero()));
+        assert_eq!(
+            U256::from_u64(42).checked_mul(U256::zero()),
+            Some(U256::zero())
+        );
+        assert_eq!(
+            U256::zero().checked_mul(U256::from_u64(42)),
+            Some(U256::zero())
+        );
     }
 
     // saturating_mul with zero
     #[test]
     fn saturating_mul_zero() {
-        assert_eq!(U256::from_u64(42).saturating_mul(U256::zero()), U256::zero());
-        assert_eq!(U256::zero().saturating_mul(U256::from_u64(42)), U256::zero());
+        assert_eq!(
+            U256::from_u64(42).saturating_mul(U256::zero()),
+            U256::zero()
+        );
+        assert_eq!(
+            U256::zero().saturating_mul(U256::from_u64(42)),
+            U256::zero()
+        );
     }
 
     // U512 — basic constructor roundtrip

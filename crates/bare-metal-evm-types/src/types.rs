@@ -225,10 +225,7 @@ impl U512 {
     /// i.e. the value fits in a `U256` without truncation.
     #[must_use]
     pub const fn high_is_zero(&self) -> bool {
-        self.0[4] == 0
-            && self.0[5] == 0
-            && self.0[6] == 0
-            && self.0[7] == 0
+        self.0[4] == 0 && self.0[5] == 0 && self.0[6] == 0 && self.0[7] == 0
     }
 
     #[must_use]

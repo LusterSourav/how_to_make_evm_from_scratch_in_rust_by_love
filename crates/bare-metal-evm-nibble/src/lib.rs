@@ -16,4 +16,8 @@ pub mod nibble;
 // downstream consumers that build their own hex-prefix or Merkle-Patricia
 // logic on top of this crate; they form the building-block layer that
 // the trie depends on.
-pub use nibble::{encode_nibble_path_padded, from_byte, high_nibble, hp_decode, hp_encode, low_nibble, MAX_NIBBLES, MAX_PACKED_BYTES, nibbles_to_byte, Nibble, NibbleBuf, NibbleError, NibbleIterator, NibblePathPacked};
+pub use nibble::{
+    encode_nibble_path_padded, from_byte, high_nibble, hp_decode, hp_encode, low_nibble,
+    nibbles_to_byte, Nibble, NibbleBuf, NibbleError, NibbleIterator, NibblePathPacked, MAX_NIBBLES,
+    MAX_PACKED_BYTES,
+};

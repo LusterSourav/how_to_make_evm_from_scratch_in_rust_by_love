@@ -206,7 +206,9 @@ fn rlp_encode_node(node: &Node) -> Vec<u8> {
                         .as_ref()
                         .map_or_else(|| encode_str(b""), |nr| rlp_encode_ref(nr))
                 } else {
-                    value.as_ref().map_or_else(|| encode_str(b""), |v| encode_str(v))
+                    value
+                        .as_ref()
+                        .map_or_else(|| encode_str(b""), |v| encode_str(v))
                 }
             });
             encode_list_from_iter(items.iter().map(Vec::as_slice))
@@ -454,7 +456,8 @@ fn insert_internal(
                     }
                 } else {
                     Node::Leaf {
-                        path: NibbleBuf::from_nibbles(&suffix[1..]).map_err(|_| Error::DecodeFailed)?,
+                        path: NibbleBuf::from_nibbles(&suffix[1..])
+                            .map_err(|_| Error::DecodeFailed)?,
                         value: lv.clone(),
                     }
                 };
@@ -540,7 +543,8 @@ fn insert_internal(
                     children[suffix[0] as usize] = Some(ec.clone());
                 } else {
                     let child = Node::Extension {
-                        path: NibbleBuf::from_nibbles(&suffix[1..]).map_err(|_| Error::DecodeFailed)?,
+                        path: NibbleBuf::from_nibbles(&suffix[1..])
+                            .map_err(|_| Error::DecodeFailed)?,
                         child: ec.clone(),
                     };
                     children[suffix[0] as usize] = Some(Box::new(commit_node(db, child)?));
@@ -837,8 +841,8 @@ fn delete_trie_nodes_inner(
 mod tests {
     use super::*;
     use crate::db::MemoryDB;
-    use alloc::vec;
     use crate::Database;
+    use alloc::vec;
 
     /// A Database that always returns errors, for testing error paths.
     struct FailingDb;

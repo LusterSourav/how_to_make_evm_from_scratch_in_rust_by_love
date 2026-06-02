@@ -152,7 +152,7 @@ const MAX_DECODE_DEPTH: usize = 128;
 ///
 /// # Errors
 /// Returns [`RlpError::TrailingData`] if the input contains unconsumed data.
-pub fn decode_strict(input: &[u8]) -> Result<RlpItem, RlpError> {
+pub fn decode_strict(input: &[u8]) -> Result<RlpItem<'_>, RlpError> {
     let (item, consumed) = decode_item(input, 0, 0)?;
     if consumed != input.len() {
         return Err(RlpError::TrailingData);
@@ -168,12 +168,16 @@ pub fn decode_strict(input: &[u8]) -> Result<RlpItem, RlpError> {
 ///
 /// # Errors
 /// Returns [`RlpError::Truncated`] if the input ends before the payload.
-pub fn decode(input: &[u8]) -> Result<RlpItem, RlpError> {
+pub fn decode(input: &[u8]) -> Result<RlpItem<'_>, RlpError> {
     decode_item(input, 0, 0).map(|(item, _consumed)| item)
 }
 
 /// Internal recursive decoder. Returns (`item`, `bytes_consumed`).
-fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, usize), RlpError> {
+fn decode_item(
+    input: &[u8],
+    offset: usize,
+    depth: usize,
+) -> Result<(RlpItem<'_>, usize), RlpError> {
     if depth >= MAX_DECODE_DEPTH {
         return Err(RlpError::TooDeep);
     }
@@ -233,7 +237,9 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
     // List: short form (0xc0–0xf7)
     if prefix <= 0xf7 {
         let payload_len = (prefix - 0xc0) as usize;
-        let end = offset.checked_add(1 + payload_len).ok_or(RlpError::InvalidLength)?;
+        let end = offset
+            .checked_add(1 + payload_len)
+            .ok_or(RlpError::InvalidLength)?;
         if end > input.len() {
             return Err(RlpError::Truncated);
         }
@@ -258,13 +264,13 @@ fn decode_item(input: &[u8], offset: usize, depth: usize) -> Result<(RlpItem, us
     if offset + 1 + len_of_len > input.len() {
         return Err(RlpError::Truncated);
     }
-        let payload_len = be_bytes_to_usize(&input[offset + 1..offset + 1 + len_of_len]);
-        if payload_len < 56 {
-            return Err(RlpError::InvalidLength);
-        }
-        if input[offset + 1] == 0 {
-            return Err(RlpError::LeadingZeros);
-        }
+    let payload_len = be_bytes_to_usize(&input[offset + 1..offset + 1 + len_of_len]);
+    if payload_len < 56 {
+        return Err(RlpError::InvalidLength);
+    }
+    if input[offset + 1] == 0 {
+        return Err(RlpError::LeadingZeros);
+    }
     let payload_end = (offset + 1 + len_of_len)
         .checked_add(payload_len)
         .ok_or(RlpError::InvalidLength)?;

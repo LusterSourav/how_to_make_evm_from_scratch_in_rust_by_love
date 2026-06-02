@@ -179,8 +179,7 @@ mod tests {
         let storage_root_rlp = encode_str(&storage_root);
         let code_hash = [0xcdu8; 32];
         let code_hash_rlp = encode_str(&code_hash);
-        let encoded =
-            encode_list(&[&nonce_rlp, &balance_rlp, &storage_root_rlp, &code_hash_rlp]);
+        let encoded = encode_list(&[&nonce_rlp, &balance_rlp, &storage_root_rlp, &code_hash_rlp]);
         assert!(Account::decode(&encoded).is_err());
     }
 }

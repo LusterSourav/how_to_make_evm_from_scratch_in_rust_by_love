@@ -3,10 +3,9 @@
 /// Run with: cargo run --example basic_state
 ///
 /// This example uses `std` for I/O, but the library itself is `#![no_std]`.
-
 extern crate bare_metal_evm;
 
-use bare_metal_evm::{Account, MemoryDB, U256, WorldState, EMPTY_ROOT_HASH};
+use bare_metal_evm::{Account, MemoryDB, WorldState, EMPTY_ROOT_HASH, U256};
 
 fn main() -> Result<(), Box<dyn core::fmt::Debug>> {
     // --- Step 1: Create an empty state ---
@@ -62,10 +61,16 @@ fn main() -> Result<(), Box<dyn core::fmt::Debug>> {
     let db = state.into_db();
     let state2 = WorldState::from_root(db, &root).unwrap();
     let acc2 = state2.get_account(&addr).unwrap().unwrap();
-    println!("7. Reloaded: balance={}, nonce={}", acc2.balance, acc2.nonce);
+    println!(
+        "7. Reloaded: balance={}, nonce={}",
+        acc2.balance, acc2.nonce
+    );
     assert_eq!(acc2.balance, U256::from_u64(1500));
     assert_eq!(acc2.nonce, U256::from_u64(2));
-    assert_eq!(state2.get_storage(&addr, &slot).unwrap(), U256::from_u64(99));
+    assert_eq!(
+        state2.get_storage(&addr, &slot).unwrap(),
+        U256::from_u64(99)
+    );
     assert!(state2.get_code(&code_hash).is_some());
 
     println!("8. All checks passed!");

@@ -4,7 +4,7 @@
 #[allow(unused_extern_crates)]
 extern crate alloc;
 
-pub mod types;
 mod ops;
+pub mod types;
 
 pub use types::{U256, U256_MAX, U512};

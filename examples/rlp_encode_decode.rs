@@ -3,7 +3,9 @@
 /// Run with: cargo run --example rlp_encode_decode
 extern crate bare_metal_evm;
 
-use bare_metal_evm::{decode, decode_strict, encode_list, encode_str, encode_u256, RlpError, RlpItem, U256};
+use bare_metal_evm::{
+    decode, decode_strict, encode_list, encode_str, encode_u256, RlpError, RlpItem, U256,
+};
 
 fn main() -> Result<(), RlpError> {
     // --- String encoding ---

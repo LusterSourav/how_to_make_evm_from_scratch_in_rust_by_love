@@ -16,10 +16,21 @@ pub use bare_metal_evm_rlp::{
 
 // --- Nibble / hex-prefix encoding for MPT ---
 pub use bare_metal_evm_nibble::{
-    from_byte, high_nibble, hp_decode, hp_encode, low_nibble, nibbles_to_byte, Nibble,
-    NibbleBuf, NibbleError, NibbleIterator, NibblePathPacked,
     // Reserved for future EVM use (nibble path packing at the EVM API layer):
-    encode_nibble_path_padded, MAX_NIBBLES, MAX_PACKED_BYTES,
+    encode_nibble_path_padded,
+    from_byte,
+    high_nibble,
+    hp_decode,
+    hp_encode,
+    low_nibble,
+    nibbles_to_byte,
+    Nibble,
+    NibbleBuf,
+    NibbleError,
+    NibbleIterator,
+    NibblePathPacked,
+    MAX_NIBBLES,
+    MAX_PACKED_BYTES,
 };
 
 // --- Merkle Patricia Trie ---
@@ -30,7 +41,7 @@ pub use bare_metal_evm_trie::{
 
 // --- World State ---
 pub use bare_metal_evm_state::{
-    Account, EMPTY_CODE_HASH, Error as StateError, Journal, JournalEntry, WorldState,
+    Account, Error as StateError, Journal, JournalEntry, WorldState, EMPTY_CODE_HASH,
 };
 
 // Reserved for future use: arithmetic extension

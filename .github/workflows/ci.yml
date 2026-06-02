@@ -37,17 +37,17 @@ jobs:
           components: clippy
 
       - name: cargo publish --dry-run (types)
-        run: cargo publish -p bare-metal-evm-types --dry-run --allow-dirty
+        run: cargo publish -p bare-metal-evm-types --registry crates-io --dry-run --allow-dirty
       - name: cargo publish --dry-run (keccak)
-        run: cargo publish -p bare-metal-evm-keccak --dry-run --allow-dirty
+        run: cargo publish -p bare-metal-evm-keccak --registry crates-io --dry-run --allow-dirty
       - name: cargo publish --dry-run (nibble)
-        run: cargo publish -p bare-metal-evm-nibble --dry-run --allow-dirty
+        run: cargo publish -p bare-metal-evm-nibble --registry crates-io --dry-run --allow-dirty
       - name: cargo publish --dry-run (rlp)
-        run: cargo publish -p bare-metal-evm-rlp --dry-run --allow-dirty
+        run: cargo publish -p bare-metal-evm-rlp --registry crates-io --dry-run --allow-dirty
       - name: cargo publish --dry-run (trie)
-        run: cargo publish -p bare-metal-evm-trie --dry-run --allow-dirty
+        run: cargo publish -p bare-metal-evm-trie --registry crates-io --dry-run --allow-dirty
       - name: cargo publish --dry-run (state)
-        run: cargo publish -p bare-metal-evm-state --dry-run --allow-dirty
+        run: cargo publish -p bare-metal-evm-state --registry crates-io --dry-run --allow-dirty
 
   publish:
     name: Publish to crates.io and GitHub Packages
@@ -66,12 +66,12 @@ jobs:
       - name: Publish to crates.io (dependency order)
         run: |
           set -e
-          cargo publish -p bare-metal-evm-types  --token "$CARGO_TOKEN"
-          cargo publish -p bare-metal-evm-keccak --token "$CARGO_TOKEN"
-          cargo publish -p bare-metal-evm-nibble --token "$CARGO_TOKEN"
-          cargo publish -p bare-metal-evm-rlp    --token "$CARGO_TOKEN"
-          cargo publish -p bare-metal-evm-trie   --token "$CARGO_TOKEN"
-          cargo publish -p bare-metal-evm-state  --token "$CARGO_TOKEN"
+          cargo publish -p bare-metal-evm-types  --registry crates-io --token "$CARGO_TOKEN"
+          cargo publish -p bare-metal-evm-keccak --registry crates-io --token "$CARGO_TOKEN"
+          cargo publish -p bare-metal-evm-nibble --registry crates-io --token "$CARGO_TOKEN"
+          cargo publish -p bare-metal-evm-rlp    --registry crates-io --token "$CARGO_TOKEN"
+          cargo publish -p bare-metal-evm-trie   --registry crates-io --token "$CARGO_TOKEN"
+          cargo publish -p bare-metal-evm-state  --registry crates-io --token "$CARGO_TOKEN"
         env:
           CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
 
