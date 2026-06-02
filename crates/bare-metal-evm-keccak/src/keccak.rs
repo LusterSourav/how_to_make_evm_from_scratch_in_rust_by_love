@@ -80,8 +80,8 @@ fn keccak_f(state: &mut [[u64; 5]; 5]) {
 
         // A[x,y] = A[x,y] XOR D[x]
         for x in 0..5 {
-            for y in 0..5 {
-                state[x][y] ^= d[x];
+            for lane in &mut state[x] {
+                *lane ^= d[x];
             }
         }
 
