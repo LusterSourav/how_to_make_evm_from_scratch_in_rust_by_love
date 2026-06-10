@@ -6,11 +6,20 @@ version = 4
 name = "bare-metal-evm"
 version = "0.2.0"
 dependencies = [
+ "bare-metal-evm-gas",
  "bare-metal-evm-keccak",
  "bare-metal-evm-nibble",
  "bare-metal-evm-rlp",
  "bare-metal-evm-state",
  "bare-metal-evm-trie",
+ "bare-metal-evm-types",
+ "hex",
+]
+
+[[package]]
+name = "bare-metal-evm-gas"
+version = "0.2.0"
+dependencies = [
  "bare-metal-evm-types",
  "hex",
 ]

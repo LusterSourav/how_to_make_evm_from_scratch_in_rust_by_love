@@ -44,6 +44,9 @@ pub use bare_metal_evm_state::{
     Account, Error as StateError, Journal, JournalEntry, WorldState, EMPTY_CODE_HASH,
 };
 
+// --- Gas Metering ---
+pub use bare_metal_evm_gas::{GasError, GasMeter};
+
 // Reserved for future use: arithmetic extension
 // U512, U256_MAX — extended arithmetic for EVM operations that need
 // larger intermediate results (e.g. MUL, ADD with overflow detection).
