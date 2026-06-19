@@ -101,7 +101,7 @@ impl GasMeter {
     }
 
     /// Charge for an SSTORE. Handles the EIP-2200 truth table,
-    /// EIP-2929 cold surcharge, and sentry check.
+    /// EIP-2929 cold surcharge (account + slot), and sentry check.
     pub fn charge_sstore(
         &mut self,
         address: &[u8; 20],
@@ -113,12 +113,18 @@ impl GasMeter {
             return Err(GasError::OutOfGas);
         }
 
-        // Warm up the slot (cold surcharge applied here)
+        // EIP-2929: warm the address first (2600 cold, 100 warm),
+        // then the slot (2100 cold, 100 warm).
+        let address_cost = self.access_set.touch_address(address);
         let slot_cost = self.access_set.touch_storage_slot(address, slot);
 
         let (base_cost, refund_delta) = self.sstore.charge_sstore(address, slot, new_value);
 
-        let total_cost = base_cost.checked_add(slot_cost).ok_or(GasError::Overflow)?;
+        let total_cost = base_cost
+            .checked_add(slot_cost)
+            .ok_or(GasError::Overflow)?
+            .checked_add(address_cost)
+            .ok_or(GasError::Overflow)?;
 
         self.remaining = self
             .remaining
@@ -130,7 +136,7 @@ impl GasMeter {
 
     /// Charge for a TLOAD. Returns the stored value (zero if unset).
     pub fn charge_tload(&mut self, address: &[u8; 20], slot: U256) -> Result<U256, GasError> {
-        let cost = self.transient.load(address, slot);
+        let cost = self.transient.gas_cost_tload();
         self.remaining = self.remaining.checked_sub(cost).ok_or(GasError::OutOfGas)?;
         Ok(self.transient.get(address, slot))
     }
@@ -355,8 +361,8 @@ mod tests {
         let slot = U256::from_u64(0);
         m.charge_sstore(&test_addr(), slot, U256::from_u64(42))
             .unwrap();
-        // cold surcharge (2100) + clean set (20000) = 22100
-        assert_eq!(m.remaining(), 100_000 - 21_000 - 22_100);
+        // cold addr (2600) + cold slot (2100) + clean set (20000) = 24700
+        assert_eq!(m.remaining(), 100_000 - 21_000 - 24_700);
     }
 
     #[test]
@@ -367,8 +373,9 @@ mod tests {
             .unwrap();
         m.charge_sstore(&test_addr(), slot, U256::from_u64(42))
             .unwrap();
-        // cold set (20000 + 2100) + warm noop (100 + 100) = 22300
-        assert_eq!(m.remaining(), 100_000 - 21_000 - 22_300);
+        // cold addr(2600) + cold slot(2100) + clean set(20000) +
+        // warm addr(100) + warm slot(100) + noop(100) = 25000
+        assert_eq!(m.remaining(), 100_000 - 21_000 - 25_000);
     }
 
     #[test]
@@ -532,7 +539,7 @@ mod tests {
     #[test]
     fn meter_charge_sstore_warm_clean_modify() {
         // After a cold set (0→x), a second write to the same slot
-        // becomes dirty-modify (0,x,y): cost = 100 slot + 100 base.
+        // becomes dirty-modify (0,x,y): cost = 100 addr + 100 slot + 100 base.
         let mut m = GasMeter::new(100_000, b"", &[], false, &origin(), Some(&to())).unwrap();
         let slot = U256::from_u64(0);
         m.charge_sstore(&test_addr(), slot, U256::from_u64(42))
@@ -540,7 +547,7 @@ mod tests {
         let after_cold = m.remaining();
         m.charge_sstore(&test_addr(), slot, U256::from_u64(99))
             .unwrap();
-        assert_eq!(after_cold - m.remaining(), 200);
+        assert_eq!(after_cold - m.remaining(), 300);
     }
 
     #[test]
@@ -598,10 +605,10 @@ mod tests {
         m.charge_sstore(&addr_a, slot, U256::from_u64(1)).unwrap();
         // cold on addr_b (different address, same slot)
         m.charge_sstore(&addr_b, slot, U256::from_u64(2)).unwrap();
-        // warm on addr_a — dirty modify (0,1,3): 100 slot + 100 base
+        // warm on addr_a — dirty modify (0,1,3): 100 addr + 100 slot + 100 base
         let before = m.remaining();
         m.charge_sstore(&addr_a, slot, U256::from_u64(3)).unwrap();
-        assert_eq!(before - m.remaining(), 200);
+        assert_eq!(before - m.remaining(), 300);
     }
 
     #[test]

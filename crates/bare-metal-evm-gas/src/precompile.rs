@@ -9,17 +9,21 @@ use crate::constants::{
 use crate::error::GasError;
 use crate::memory::word_count;
 
-/// Compute gas cost for a precompile call by address.
+/// Compute gas cost for a precompile call by address and input length.
 ///
 /// Returns `None` for unknown precompile addresses (the EVM treats
 /// them as regular CALLs).
+///
+/// Note: precompiles 0x05 (modexp) and 0x09 (blake2f) require the
+/// full input bytes to compute gas — the caller must handle these
+/// separately; this function returns `None` for them.
 pub fn precompile_gas(precompile_address: u8, input_len: usize) -> Option<Result<u64, GasError>> {
     match precompile_address {
         0x01 => Some(Ok(ECRECOVER_GAS)),
         0x02 => Some(sha256_gas(input_len)),
         0x03 => Some(ripemd160_gas(input_len)),
         0x04 => Some(identity_gas(input_len)),
-        0x05 => unimplemented!("modexp gas is input-dependent and requires the full header"),
+        0x05 => None, // modexp: requires full header bytes for gas
         0x06 => Some(Ok(BN256ADD_GAS_ISTANBUL)),
         0x07 => Some(Ok(BN256SCALARMUL_GAS_ISTANBUL)),
         // Bn256Pairing: num_pairs = input_len / 192
@@ -27,9 +31,7 @@ pub fn precompile_gas(precompile_address: u8, input_len: usize) -> Option<Result
             let num_pairs = input_len / 192;
             Some(bn256_pairing_gas(num_pairs as u64))
         }
-        0x09 => {
-            unimplemented!("blake2f gas depends on round count encoded in the input")
-        }
+        0x09 => None, // blake2f: requires round count from input
         0x0a => Some(Ok(BLS12381_G1ADD_GAS)),
         0x0b => Some(Ok(BLS12381_G1MUL_GAS)),
         0x0c => Some(Ok(BLS12381_G2ADD_GAS)),
