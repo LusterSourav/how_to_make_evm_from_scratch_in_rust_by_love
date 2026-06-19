@@ -1,4 +1,4 @@
-use crate::constants::{CREATE_DATA_GAS, CREATE_GAS, INIT_CODE_WORD_GAS};
+use crate::constants::{CREATE_DATA_GAS, CREATE_GAS, INIT_CODE_WORD_GAS, MAX_INIT_CODE_SIZE};
 use crate::error::GasError;
 
 /// Compute gas cost for a CREATE or CREATE2 opcode, excluding
@@ -27,8 +27,11 @@ pub fn create_gas(
 }
 
 /// EIP-3860: 2 gas per 32-byte word of initcode.
-/// Also enforces the max initcode size (49152).
+/// Returns `OutOfGas` if initcode exceeds `MAX_INIT_CODE_SIZE` (49152).
 pub fn initcode_word_cost(initcode_len: u64) -> Result<u64, GasError> {
+    if initcode_len > MAX_INIT_CODE_SIZE {
+        return Err(GasError::OutOfGas);
+    }
     let words = initcode_len.div_ceil(32);
     INIT_CODE_WORD_GAS
         .checked_mul(words)

@@ -29,7 +29,7 @@ impl TransientStorage {
 
     /// Charge for TLOAD and return the gas cost. Use `get()` for the
     /// stored value.
-    pub fn load(&mut self, _address: &[u8; 20], _slot: U256) -> u64 {
+    pub fn load(&self, _address: &[u8; 20], _slot: U256) -> u64 {
         TLOAD_GAS
     }
 

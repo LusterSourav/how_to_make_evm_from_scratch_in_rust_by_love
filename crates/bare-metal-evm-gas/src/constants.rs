@@ -39,17 +39,14 @@ pub const CALL_NEW_ACCOUNT_GAS: u64 = 25_000;
 // CREATE / CREATE2
 
 pub const CREATE_GAS: u64 = 32_000;
-pub const CREATE2_GAS: u64 = 32_000;
 pub const CREATE_DATA_GAS: u64 = 200;
 // EIP-3860 — initcode cost metering
 pub const INIT_CODE_WORD_GAS: u64 = 2;
 pub const MAX_INIT_CODE_SIZE: u64 = 49_152;
-pub const MAX_CODE_SIZE: u64 = 24_576;
 
 // SELFDESTRUCT (EIP-150, EIP-6780)
 
 pub const SELFDESTRUCT_GAS_EIP150: u64 = 5_000;
-pub const SELFDESTRUCT_REFUND_GAS: u64 = 24_000;
 
 // LOG
 
@@ -104,9 +101,6 @@ pub const RIPEMD160_PER_WORD_GAS: u64 = 120;
 // IDENTITY
 pub const IDENTITY_BASE_GAS: u64 = 15;
 pub const IDENTITY_PER_WORD_GAS: u64 = 3;
-
-// MODEXP (precompile 05) — handled via quadratic formula, constants here approximate
-pub const MODEXP_HEADER_LEN: u64 = 96;
 
 // Bn256Add (precompile 06) — updated by EIP-1108 (Istanbul)
 pub const BN256ADD_GAS_ISTANBUL: u64 = 150;

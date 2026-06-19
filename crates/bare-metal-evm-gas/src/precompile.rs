@@ -27,7 +27,9 @@ pub fn precompile_gas(precompile_address: u8, input_len: usize) -> Option<Result
             let num_pairs = input_len / 192;
             Some(bn256_pairing_gas(num_pairs as u64))
         }
-        0x09 => Some(Ok(0)), // blake2f — requires round count
+        0x09 => {
+            unimplemented!("blake2f gas depends on round count encoded in the input")
+        }
         0x0a => Some(Ok(BLS12381_G1ADD_GAS)),
         0x0b => Some(Ok(BLS12381_G1MUL_GAS)),
         0x0c => Some(Ok(BLS12381_G2ADD_GAS)),
