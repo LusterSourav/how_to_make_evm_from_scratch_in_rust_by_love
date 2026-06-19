@@ -21,7 +21,6 @@ name = "bare-metal-evm-gas"
 version = "0.2.0"
 dependencies = [
  "bare-metal-evm-types",
- "hex",
 ]
 
 [[package]]

@@ -110,4 +110,22 @@ mod tests {
         assert!(result.is_ok());
         assert!(result.unwrap() > 21_000);
     }
+
+    #[test]
+    fn intrinsic_multiple_access_list_items() {
+        let items = vec![
+            AccessListItem {
+                address: [1u8; 20],
+                storage_keys: vec![[2u8; 32]],
+            },
+            AccessListItem {
+                address: [3u8; 20],
+                storage_keys: vec![[4u8; 32], [5u8; 32]],
+            },
+        ];
+        assert_eq!(
+            intrinsic_gas(b"", &items, false).unwrap(),
+            21_000 + 2 * 2400 + 3 * 1900
+        );
+    }
 }

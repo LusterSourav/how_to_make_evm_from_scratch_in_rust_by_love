@@ -15,6 +15,7 @@ pub struct GasMeter {
     remaining: u64,
     memory_words: usize,
     refund: i64,
+    calldata_tokens: u64,
     access_set: AccessSet,
     sstore: SstoreTracker,
     transient: TransientStorage,
@@ -39,7 +40,10 @@ impl GasMeter {
         }
 
         // EIP-7623: reject if the calldata floor exceeds the gas limit.
-        let floor_gas = eip7623_calldata_tokens(calldata) * EIP7623_CALLDATA_FLOOR_DIVISOR;
+        let calldata_tokens = eip7623_calldata_tokens(calldata)?;
+        let floor_gas = calldata_tokens
+            .checked_mul(EIP7623_CALLDATA_FLOOR_DIVISOR)
+            .ok_or(GasError::Overflow)?;
         if floor_gas > initial_gas {
             return Err(GasError::OutOfGas);
         }
@@ -53,6 +57,7 @@ impl GasMeter {
             remaining: initial_gas - intrinsic,
             memory_words: 0,
             refund: 0,
+            calldata_tokens,
             access_set,
             sstore: SstoreTracker::new(),
             transient: TransientStorage::new(),
@@ -82,7 +87,6 @@ impl GasMeter {
     }
 
     /// Charge for an account touch. Cold on first access, warm after.
-    /// Returns the gas cost.
     pub fn charge_account_access(&mut self, address: &[u8; 20]) -> Result<(), GasError> {
         let cost = self.access_set.touch_address(address);
         self.remaining = self.remaining.checked_sub(cost).ok_or(GasError::OutOfGas)?;
@@ -90,7 +94,6 @@ impl GasMeter {
     }
 
     /// Charge for a storage slot read. Cold on first access, warm after.
-    /// Returns the gas cost.
     pub fn charge_sload(&mut self, address: &[u8; 20], slot: U256) -> Result<(), GasError> {
         let cost = self.access_set.touch_storage_slot(address, slot);
         self.remaining = self.remaining.checked_sub(cost).ok_or(GasError::OutOfGas)?;
@@ -113,7 +116,7 @@ impl GasMeter {
         // Warm up the slot (cold surcharge applied here)
         let slot_cost = self.access_set.touch_storage_slot(address, slot);
 
-        let (base_cost, refund_delta) = self.sstore.charge_sstore(address, slot, new_value)?;
+        let (base_cost, refund_delta) = self.sstore.charge_sstore(address, slot, new_value);
 
         let total_cost = base_cost.checked_add(slot_cost).ok_or(GasError::Overflow)?;
 
@@ -127,7 +130,7 @@ impl GasMeter {
 
     /// Charge for a TLOAD. Returns the stored value (zero if unset).
     pub fn charge_tload(&mut self, address: &[u8; 20], slot: U256) -> Result<U256, GasError> {
-        let cost = self.transient.load(address, slot)?;
+        let cost = self.transient.load(address, slot);
         self.remaining = self.remaining.checked_sub(cost).ok_or(GasError::OutOfGas)?;
         Ok(self.transient.get(address, slot))
     }
@@ -139,7 +142,7 @@ impl GasMeter {
         slot: U256,
         value: U256,
     ) -> Result<(), GasError> {
-        let cost = self.transient.store(address, slot, value)?;
+        let cost = self.transient.store(address, slot, value);
         self.remaining = self.remaining.checked_sub(cost).ok_or(GasError::OutOfGas)?;
         Ok(())
     }
@@ -158,31 +161,30 @@ impl GasMeter {
     /// Apply refund at the end of a transaction. Enforces EIP-3529 refund
     /// cap (`min(refund, gas_used / 5)`) and EIP-7623 calldata floor
     /// (`max(gas_used, 10 * calldata_tokens)`).
-    pub fn apply_refund(&mut self, calldata: &[u8]) -> Result<(), GasError> {
+    pub fn apply_refund(&mut self) -> Result<(), GasError> {
         let gas_used_before_refund = self
             .initial_gas
             .checked_sub(self.remaining)
             .ok_or(GasError::Overflow)?;
 
-        // EIP-7623 calldata floor, capped at initial_gas to prevent
-        // underflow when the floor exceeds the gas limit.
-        let tokens = eip7623_calldata_tokens(calldata);
-        let floor_gas = tokens
-            .checked_mul(EIP7623_CALLDATA_FLOOR_DIVISOR)
-            .ok_or(GasError::Overflow)?;
-        let effective_used = core::cmp::min(
-            core::cmp::max(gas_used_before_refund, floor_gas),
-            self.initial_gas,
-        );
-
-        // EIP-3529 refund cap
-        let max_refund = effective_used / MAX_REFUND_QUOTIENT;
+        // EIP-3529 refund cap based on actual gas used (before floor).
+        let max_refund = gas_used_before_refund / MAX_REFUND_QUOTIENT;
         let positive_refund = core::cmp::max(self.refund, 0) as u64;
         let capped_refund = core::cmp::min(positive_refund, max_refund);
 
-        let final_used = effective_used
+        let used_after_refund = gas_used_before_refund
             .checked_sub(capped_refund)
             .ok_or(GasError::Overflow)?;
+
+        // EIP-7623 calldata floor applied AFTER refund.
+        let floor_gas = self
+            .calldata_tokens
+            .checked_mul(EIP7623_CALLDATA_FLOOR_DIVISOR)
+            .ok_or(GasError::Overflow)?;
+        let final_used = core::cmp::max(
+            used_after_refund,
+            core::cmp::min(floor_gas, self.initial_gas),
+        );
         self.remaining = self
             .initial_gas
             .checked_sub(final_used)
@@ -225,11 +227,11 @@ impl GasMeter {
 
 /// EIP-7623: count calldata tokens. Non-zero bytes cost 4 tokens,
 /// zero bytes cost 1 token. The floor is `tokens * 10`.
-fn eip7623_calldata_tokens(calldata: &[u8]) -> u64 {
-    calldata
-        .iter()
-        .map(|&b| if b == 0 { 1u64 } else { 4u64 })
-        .sum()
+fn eip7623_calldata_tokens(calldata: &[u8]) -> Result<u64, GasError> {
+    calldata.iter().try_fold(0u64, |acc, &b| {
+        acc.checked_add(if b == 0 { 1u64 } else { 4u64 })
+            .ok_or(GasError::Overflow)
+    })
 }
 
 #[cfg(test)]
@@ -427,7 +429,7 @@ mod tests {
         m.charge_sstore(&test_addr(), slot, U256::from_u64(0))
             .unwrap();
         let before = m.remaining();
-        m.apply_refund(b"").unwrap();
+        m.apply_refund().unwrap();
         assert!(m.remaining() >= before);
     }
 
@@ -435,7 +437,7 @@ mod tests {
     fn meter_apply_refund_cap() {
         let mut m = GasMeter::new(200_000, b"\x00", &[], false, &origin(), Some(&to())).unwrap();
         m.refund = 100_000;
-        m.apply_refund(b"").unwrap();
+        m.apply_refund().unwrap();
         assert_eq!(m.refund(), 0);
     }
 
@@ -443,7 +445,7 @@ mod tests {
     fn meter_apply_refund_floor() {
         let mut m = GasMeter::new(200_000, b"", &[], false, &origin(), Some(&to())).unwrap();
         m.refund = 50_000;
-        m.apply_refund(b"\x00\x00\x00").unwrap();
+        m.apply_refund().unwrap();
         assert!(m.remaining() <= 200_000);
     }
 
@@ -455,7 +457,7 @@ mod tests {
         let mut m = GasMeter::new(100_000, &calldata, &[], false, &origin(), Some(&to())).unwrap();
         // consume all execution gas
         m.charge(m.remaining()).unwrap();
-        m.apply_refund(&calldata).unwrap();
+        m.apply_refund().unwrap();
         // effective_used capped at initial_gas, no underflow
         assert!(m.remaining() <= 100_000);
     }
@@ -525,6 +527,81 @@ mod tests {
         let before = m.remaining();
         m.charge_account_access(&t).unwrap();
         assert_eq!(before - m.remaining(), COLD_ACCOUNT_ACCESS_COST);
+    }
+
+    #[test]
+    fn meter_charge_sstore_warm_clean_modify() {
+        // After a cold set (0→x), a second write to the same slot
+        // becomes dirty-modify (0,x,y): cost = 100 slot + 100 base.
+        let mut m = GasMeter::new(100_000, b"", &[], false, &origin(), Some(&to())).unwrap();
+        let slot = U256::from_u64(0);
+        m.charge_sstore(&test_addr(), slot, U256::from_u64(42))
+            .unwrap();
+        let after_cold = m.remaining();
+        m.charge_sstore(&test_addr(), slot, U256::from_u64(99))
+            .unwrap();
+        assert_eq!(after_cold - m.remaining(), 200);
+    }
+
+    #[test]
+    fn meter_apply_refund_after_fix() {
+        let calldata = b"\x01\x02\x03";
+        let mut m = GasMeter::new(200_000, calldata, &[], false, &origin(), Some(&to())).unwrap();
+        let slot = U256::from_u64(0);
+        m.charge_sstore(&test_addr(), slot, U256::from_u64(1))
+            .unwrap();
+        m.charge_sstore(&test_addr(), slot, U256::from_u64(0))
+            .unwrap();
+        m.apply_refund().unwrap();
+        assert_eq!(m.refund(), 0);
+    }
+
+    #[test]
+    fn meter_apply_refund_zero_refund() {
+        let mut m = GasMeter::new(21_000, b"", &[], false, &origin(), Some(&to())).unwrap();
+        m.apply_refund().unwrap();
+        assert_eq!(m.remaining(), 0);
+    }
+
+    #[test]
+    fn meter_apply_refund_negative_refund() {
+        let mut m = GasMeter::new(200_000, b"", &[], false, &origin(), Some(&to())).unwrap();
+        m.refund = -5000;
+        m.apply_refund().unwrap();
+        assert_eq!(m.refund(), 0);
+    }
+
+    #[test]
+    fn meter_charge_zero_amount() {
+        let mut m = GasMeter::new(21_000, b"", &[], false, &origin(), Some(&to())).unwrap();
+        let before = m.remaining();
+        m.charge(0).unwrap();
+        assert_eq!(m.remaining(), before);
+    }
+
+    #[test]
+    fn meter_charge_memory_zero() {
+        let mut m = GasMeter::new(21_000, b"", &[], false, &origin(), Some(&to())).unwrap();
+        let before = m.remaining();
+        m.charge_memory(0).unwrap();
+        assert_eq!(m.remaining(), before);
+        assert_eq!(m.memory_words(), 0);
+    }
+
+    #[test]
+    fn meter_cross_address_sstore() {
+        let mut m = GasMeter::new(200_000, b"", &[], false, &origin(), Some(&to())).unwrap();
+        let addr_a = [0xAA; 20];
+        let addr_b = [0xBB; 20];
+        let slot = U256::from_u64(0);
+        // cold on addr_a
+        m.charge_sstore(&addr_a, slot, U256::from_u64(1)).unwrap();
+        // cold on addr_b (different address, same slot)
+        m.charge_sstore(&addr_b, slot, U256::from_u64(2)).unwrap();
+        // warm on addr_a — dirty modify (0,1,3): 100 slot + 100 base
+        let before = m.remaining();
+        m.charge_sstore(&addr_a, slot, U256::from_u64(3)).unwrap();
+        assert_eq!(before - m.remaining(), 200);
     }
 
     #[test]

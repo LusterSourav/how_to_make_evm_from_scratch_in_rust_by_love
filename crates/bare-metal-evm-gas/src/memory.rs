@@ -11,29 +11,30 @@ pub fn word_count(byte_size: usize) -> usize {
 }
 
 /// Gas cost for `num_words` words of memory: `3*words + words^2/512`.
+/// Returns `OutOfGas` when the word count exceeds the maximum memory size.
 pub fn memory_cost(num_words: usize) -> Result<u64, GasError> {
     if num_words > MEMORY_MAX_SIZE / 32 {
-        return Err(GasError::Overflow);
+        return Err(GasError::OutOfGas);
     }
     let w = num_words as u128;
     let linear = MEMORY_GAS as u128 * w;
     let quadratic = w * w / QUAD_COEFF_DIV as u128;
-    let total = linear.checked_add(quadratic).ok_or(GasError::Overflow)?;
-    if total > u64::MAX as u128 {
-        return Err(GasError::Overflow);
-    }
-    Ok(total as u64)
+    // Both terms fit in u128; max valid num_words (32768) gives total ≈ 2.1M
+    Ok((linear + quadratic) as u64)
 }
 
 /// Incremental gas cost when memory grows from `prev_num_words` to
 /// `new_num_words`. Returns zero if memory doesn't expand.
+/// Propagates `OutOfGas` from `memory_cost` when the word count
+/// exceeds the maximum memory size.
 pub fn memory_expansion_cost(prev_num_words: usize, new_num_words: usize) -> Result<u64, GasError> {
     if new_num_words <= prev_num_words {
         return Ok(0);
     }
     let prev = memory_cost(prev_num_words)?;
     let new = memory_cost(new_num_words)?;
-    new.checked_sub(prev).ok_or(GasError::Overflow)
+    // new >= prev because memory_cost is monotonic
+    Ok(new - prev)
 }
 
 #[cfg(test)]
@@ -115,5 +116,12 @@ mod tests {
     fn memory_cost_typical_tx() {
         let cost = memory_cost(128).unwrap();
         assert_eq!(cost, 416);
+    }
+
+    #[test]
+    fn memory_cost_exact_max_valid() {
+        let words = MEMORY_MAX_SIZE / 32;
+        let result = memory_cost(words);
+        assert!(result.is_ok());
     }
 }

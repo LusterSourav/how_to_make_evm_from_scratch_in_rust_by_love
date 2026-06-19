@@ -2,7 +2,6 @@ use alloc::collections::BTreeMap;
 use bare_metal_evm_types::U256;
 
 use crate::constants::{TLOAD_GAS, TSTORE_GAS};
-use crate::error::GasError;
 
 #[derive(Debug, Clone, Default)]
 pub struct TransientStorage {
@@ -16,28 +15,28 @@ impl TransientStorage {
 
     /// Returns the gas cost for a TLOAD.
     #[must_use]
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn cost_tload() -> u64 {
         TLOAD_GAS
     }
 
     /// Returns the gas cost for a TSTORE.
     #[must_use]
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn cost_tstore() -> u64 {
         TSTORE_GAS
     }
 
     /// Charge for TLOAD and return the gas cost. Use `get()` for the
     /// stored value.
-    pub fn load(&mut self, _address: &[u8; 20], _slot: U256) -> Result<u64, GasError> {
-        Ok(TLOAD_GAS)
+    pub fn load(&mut self, _address: &[u8; 20], _slot: U256) -> u64 {
+        TLOAD_GAS
     }
 
     /// Charge for TSTORE and write the value.
-    pub fn store(&mut self, address: &[u8; 20], slot: U256, value: U256) -> Result<u64, GasError> {
+    pub fn store(&mut self, address: &[u8; 20], slot: U256, value: U256) -> u64 {
         self.store.insert((*address, slot), value);
-        Ok(TSTORE_GAS)
+        TSTORE_GAS
     }
 
     /// Read the value at (address, slot). Returns zero if not set.
@@ -71,22 +70,22 @@ mod tests {
     #[test]
     fn transient_store_and_get() {
         let mut ts = TransientStorage::new();
-        ts.store(&ADDR, SLOT, U256::from_u64(42)).unwrap();
+        ts.store(&ADDR, SLOT, U256::from_u64(42));
         assert_eq!(ts.get(&ADDR, SLOT), U256::from_u64(42));
     }
 
     #[test]
     fn transient_overwrite() {
         let mut ts = TransientStorage::new();
-        ts.store(&ADDR, SLOT, U256::from_u64(1)).unwrap();
-        ts.store(&ADDR, SLOT, U256::from_u64(2)).unwrap();
+        ts.store(&ADDR, SLOT, U256::from_u64(1));
+        ts.store(&ADDR, SLOT, U256::from_u64(2));
         assert_eq!(ts.get(&ADDR, SLOT), U256::from_u64(2));
     }
 
     #[test]
     fn transient_reset_clears() {
         let mut ts = TransientStorage::new();
-        ts.store(&ADDR, SLOT, U256::from_u64(99)).unwrap();
+        ts.store(&ADDR, SLOT, U256::from_u64(99));
         ts.reset();
         assert_eq!(ts.get(&ADDR, SLOT), U256::zero());
     }
@@ -99,5 +98,17 @@ mod tests {
     #[test]
     fn transient_cost_tstore() {
         assert_eq!(TransientStorage::cost_tstore(), TSTORE_GAS);
+    }
+
+    #[test]
+    fn transient_different_addresses() {
+        let mut ts = TransientStorage::new();
+        let addr_a = [0xAA; 20];
+        let addr_b = [0xBB; 20];
+        let slot = U256::zero();
+        ts.store(&addr_a, slot, U256::from_u64(1));
+        ts.store(&addr_b, slot, U256::from_u64(2));
+        assert_eq!(ts.get(&addr_a, slot), U256::from_u64(1));
+        assert_eq!(ts.get(&addr_b, slot), U256::from_u64(2));
     }
 }

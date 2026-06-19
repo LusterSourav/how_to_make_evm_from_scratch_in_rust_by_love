@@ -19,7 +19,12 @@ pub fn eip150_available_gas(remaining_gas: u64) -> u64 {
 ///
 /// The caller pays `cost_to_caller`. The child starts with
 /// `gas_forwarded_to_child`. The caller retains at least
-/// `remaining / 64` (EIP-150 63/64 rule).
+/// `(remaining_gas - cost) / 64` (EIP-150 63/64 rule applied
+/// after intrinsic call cost).
+///
+/// The stipend (2300) is added after the EIP-150 cap, so the
+/// child can exceed the caller's retained gas. This matches
+/// go-ethereum behavior.
 pub fn gas_for_child_call(
     remaining_gas: u64,
     requested_gas: u64,
@@ -42,12 +47,12 @@ pub fn gas_for_child_call(
         return Err(GasError::OutOfGas);
     }
 
-    let remaining_after_cost = remaining_gas - cost;
-    let max_forward = eip150_available_gas(remaining_after_cost);
+    let max_forward = eip150_available_gas(remaining_gas - cost);
     let forwarded = core::cmp::min(requested_gas, max_forward);
     let stipend = call_stipend(has_value);
 
-    Ok((cost, forwarded + stipend))
+    let total_forwarded = forwarded.checked_add(stipend).ok_or(GasError::Overflow)?;
+    Ok((cost, total_forwarded))
 }
 
 #[cfg(test)]
@@ -114,8 +119,8 @@ mod tests {
     fn child_call_eip150_capped() {
         let (cost, forwarded) = gas_for_child_call(100_000, 99_000, false, false).unwrap();
         assert_eq!(cost, 700);
-        let remaining_after = 100_000 - cost;
-        let max_forward = eip150_available_gas(remaining_after);
+        // 63/64 applies after deducting cost: eip150_available_gas(100_000 - 700)
+        let max_forward = eip150_available_gas(100_000 - 700);
         assert_eq!(forwarded, max_forward);
     }
 
@@ -132,5 +137,18 @@ mod tests {
         assert!(result.is_ok());
         let (cost, _) = result.unwrap();
         assert_eq!(cost, cost_needed);
+    }
+
+    #[test]
+    fn call_gas_min_edge() {
+        // remaining == cost, 0 forwarded but stipend still given
+        let (cost, forwarded) = gas_for_child_call(700 + 9000, 0, true, false).unwrap();
+        assert_eq!(cost, 700 + 9000);
+        assert_eq!(forwarded, 2300);
+    }
+
+    #[test]
+    fn eip150_available_gas_one() {
+        assert_eq!(eip150_available_gas(1), 1);
     }
 }

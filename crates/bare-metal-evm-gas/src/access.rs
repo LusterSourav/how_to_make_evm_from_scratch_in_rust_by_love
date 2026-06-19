@@ -78,13 +78,13 @@ impl AccessSet {
     }
 
     #[must_use]
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn is_warm_address(&self, address: &[u8; 20]) -> bool {
         self.addresses.contains(address)
     }
 
     #[must_use]
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn is_warm_storage_slot(&self, address: &[u8; 20], slot: U256) -> bool {
         self.storage_slots
             .get(address)
@@ -224,5 +224,29 @@ mod tests {
             addr[19] = i;
             assert!(set.is_warm_address(&addr), "precompile {i} should be warm");
         }
+    }
+
+    #[test]
+    fn access_set_initialize_then_touch_cost() {
+        let key = [0xFFu8; 32];
+        let items = alloc::vec![AccessListItem {
+            address: test_addr(),
+            storage_keys: alloc::vec![key],
+        }];
+        let mut set = AccessSet::new();
+        set.initialize(&items);
+        assert_eq!(set.touch_address(&test_addr()), WARM_STORAGE_READ_COST);
+        assert_eq!(
+            set.touch_storage_slot(&test_addr(), U256::from_bytes_be(key)),
+            WARM_STORAGE_READ_COST
+        );
+    }
+
+    #[test]
+    fn access_set_no_precompile_zero() {
+        let set = AccessSet::new();
+        let addr_zero = [0u8; 20];
+        // 0x00 is NOT a precompile and must NOT be auto-warmed
+        assert!(!set.is_warm_address(&addr_zero));
     }
 }
