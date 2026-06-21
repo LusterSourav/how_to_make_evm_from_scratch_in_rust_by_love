@@ -21,7 +21,7 @@ jobs:
 
       - name: Package all crates
         run: |
-          for crate in bare-metal-evm-types bare-metal-evm-keccak bare-metal-evm-nibble bare-metal-evm-rlp bare-metal-evm-trie bare-metal-evm-state; do
+          for crate in bare-metal-evm-types bare-metal-evm-keccak bare-metal-evm-nibble bare-metal-evm-rlp bare-metal-evm-trie bare-metal-evm-state bare-metal-evm-gas; do
             cargo package -p "$crate" --no-verify --allow-dirty
           done
 
@@ -33,7 +33,7 @@ jobs:
         run: |
           OWNER_LOWER=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
           REPO_LOWER=$(echo "$REPO" | tr '[:upper:]' '[:lower:]')
-          for crate in bare-metal-evm-types bare-metal-evm-keccak bare-metal-evm-nibble bare-metal-evm-rlp bare-metal-evm-trie bare-metal-evm-state; do
+          for crate in bare-metal-evm-types bare-metal-evm-keccak bare-metal-evm-nibble bare-metal-evm-rlp bare-metal-evm-trie bare-metal-evm-state bare-metal-evm-gas; do
             IMAGE="ghcr.io/${OWNER_LOWER}/${REPO_LOWER}/${crate}:${IMAGE_TAG}"
             echo "==> Building $IMAGE"
             printf 'FROM scratch\nCOPY target/package/%s-0.2.0.crate /%s-0.2.0.crate\n' "$crate" "$crate" > /tmp/Dockerfile

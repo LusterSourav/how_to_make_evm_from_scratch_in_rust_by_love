@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn core::fmt::Debug>> {
     let slot = U256::from_u64(42);
     state.set_storage(addr, slot, U256::from_u64(99)).unwrap();
     let val = state.get_storage(&addr, &slot).unwrap();
-    println!("3. Storage[42] = {}", val);
+    println!("3. Storage[42] = {val}");
 
     // --- Step 4: Set contract code ---
     let code = vec![0x60, 0x01, 0x60, 0x02, 0x01]; // PUSH1 1; PUSH1 2; ADD
@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn core::fmt::Debug>> {
     state.rollback().unwrap();
     let balance_after = state.get_account(&addr).unwrap().unwrap().balance;
     assert_eq!(balance_after, old_balance);
-    println!("5. Rollback works: balance unchanged at {}", old_balance);
+    println!("5. Rollback works: balance unchanged at {old_balance}");
 
     // --- Step 6: Commit to the trie ---
     let root = state.commit().unwrap();

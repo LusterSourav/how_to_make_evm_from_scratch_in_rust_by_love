@@ -21,6 +21,18 @@ pub fn sha3_gas(data_len: usize) -> Result<u64, GasError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    #[test]
+    fn prop_sha3_gas_word_aligned() {
+        proptest::proptest!(proptest::test_runner::Config::default(),
+            |(len in 0..=1024usize)|
+        {
+            let words = if len == 0 { 0 } else { (len - 1) / 32 + 1 };
+            let expected = KECCAK256_GAS + KECCAK256_WORD_GAS * words as u64;
+            prop_assert_eq!(sha3_gas(len).unwrap(), expected);
+        });
+    }
 
     #[test]
     fn sha3_empty() {

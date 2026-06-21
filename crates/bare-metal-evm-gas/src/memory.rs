@@ -19,8 +19,9 @@ pub fn memory_cost(num_words: usize) -> Result<u64, GasError> {
     let w = num_words as u128;
     let linear = MEMORY_GAS as u128 * w;
     let quadratic = w * w / QUAD_COEFF_DIV as u128;
-    // Both terms fit in u128; max valid num_words (32768) gives total ≈ 2.1M
-    Ok((linear + quadratic) as u64)
+    (linear + quadratic)
+        .try_into()
+        .map_err(|_| GasError::Overflow)
 }
 
 /// Incremental gas cost when memory grows from `prev_num_words` to
@@ -40,6 +41,7 @@ pub fn memory_expansion_cost(prev_num_words: usize, new_num_words: usize) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn word_count_zero() {
@@ -123,5 +125,31 @@ mod tests {
         let words = MEMORY_MAX_SIZE / 32;
         let result = memory_cost(words);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn prop_memory_cost_monotonic() {
+        proptest::proptest!(proptest::test_runner::Config::default(),
+            |(a in 0usize..=32768usize, b in 0usize..=32768usize)|
+        {
+            if a > b { return Ok(()); }
+            let cost_a = memory_cost(a).unwrap();
+            let cost_b = memory_cost(b).unwrap();
+            prop_assert!(cost_a <= cost_b, "memory_cost should be monotonic: {a}→{cost_a} > {b}→{cost_b}");
+        });
+    }
+
+    #[test]
+    fn prop_memory_expansion_non_negative() {
+        proptest::proptest!(proptest::test_runner::Config::default(),
+            |(prev in 0usize..=32768usize, new in 0usize..=32768usize)|
+        {
+            if new <= prev {
+                prop_assert_eq!(memory_expansion_cost(prev, new).unwrap(), 0);
+            } else {
+                let cost = memory_expansion_cost(prev, new).unwrap();
+                prop_assert!(cost > 0);
+            }
+        });
     }
 }

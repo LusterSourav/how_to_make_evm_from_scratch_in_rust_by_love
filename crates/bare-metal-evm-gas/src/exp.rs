@@ -25,6 +25,26 @@ pub fn exp_gas(exponent: &[u8; 32]) -> Result<u64, GasError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    #[test]
+    fn prop_exp_gas_byte_size() {
+        proptest::proptest!(proptest::test_runner::Config::default(),
+            |(leading_zeroes in 0..=32usize)|
+        {
+            let mut exponent = [0u8; 32];
+            if leading_zeroes < 32 {
+                exponent[leading_zeroes] = 0x01;
+            }
+            let expected = if leading_zeroes == 32 {
+                EXP_GAS
+            } else {
+                let byte_size = 32 - leading_zeroes;
+                EXP_GAS + EXP_BYTE_GAS * byte_size as u64
+            };
+            prop_assert_eq!(exp_gas(&exponent).unwrap(), expected);
+        });
+    }
 
     #[test]
     fn exp_zero_exponent() {

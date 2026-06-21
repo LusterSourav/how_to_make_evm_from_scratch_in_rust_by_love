@@ -45,7 +45,6 @@ impl SstoreTracker {
     /// Mark that the slot has been accessed. On first access, the given
     /// value becomes both original and current. Call before the first
     /// `charge_sstore` to set the storage slot's pre-existing value.
-    #[allow(dead_code)]
     pub fn initialize_slot(&mut self, address: &[u8; 20], slot: U256, initial_value: U256) {
         let key = (*address, slot);
         self.slots.entry(key).or_insert(SlotEntry {
@@ -125,12 +124,36 @@ fn compute_sstore_cost(original: U256, current: U256, new_value: U256) -> (u64, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     const ADDR: [u8; 20] = [0x01; 20];
     const SLOT: U256 = U256::zero();
 
     fn v(val: u64) -> U256 {
         U256::from_u64(val)
+    }
+
+    #[test]
+    fn prop_sstore_noop_any_value() {
+        proptest::proptest!(proptest::test_runner::Config::default(),
+            |(val in proptest::arbitrary::any::<u64>())|
+        {
+            let (cost, refund) = compute_sstore_cost(v(val), v(val), v(val));
+            prop_assert_eq!(cost, WARM_STORAGE_READ_COST);
+            prop_assert_eq!(refund, 0);
+        });
+    }
+
+    #[test]
+    fn prop_sstore_clean_set_zero_to_nonzero() {
+        proptest::proptest!(proptest::test_runner::Config::default(),
+            |(val in proptest::arbitrary::any::<u64>())|
+        {
+            if val == 0 { return Ok(()); }
+            let (cost, refund) = compute_sstore_cost(v(0), v(0), v(val));
+            prop_assert_eq!(cost, SSTORE_SET_GAS);
+            prop_assert_eq!(refund, 0);
+        });
     }
 
     // --- Noop scenarios ---

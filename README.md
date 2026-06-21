@@ -14,7 +14,7 @@
 | **Layer 0 — Primitive Arithmetic** (`U256`, `U512`, Knuth division) | Shipped |
 | **Layer 1 — Serialization & Sponge** (RLP, HP nibbles, Keccak-256) | Shipped |
 | **Layer 2 — State Management** (MPT, account model, world state, journal) | Shipped |
-| **Layer 3 — Resource Metering** (gas, access lists, 63/64 rule) | Planned |
+| **Layer 3 — Resource Metering** (gas, access lists, 63/64 rule) | Shipped |
 | **Layer 4 — Engine Core** (dispatch table, jump map, Z-function, opcodes) | Planned |
 | **Layer 5 — Compliance & Precompiles** (Secp256k1, MODEXP, EOF, EIP-1153) | Planned |
 
@@ -56,7 +56,7 @@ The library is **no_std + zero-dependency** at the workspace level. The `runtime
 
 ## Crate Layout
 
-Six focused crates, each with a single responsibility. All are `#![no_std]` + `#![deny(unsafe_code)]` + zero external runtime dependencies.
+Seven focused crates, each with a single responsibility. All are `#![no_std]` + `#![deny(unsafe_code)]` + zero external runtime dependencies.
 
 | Crate | Role |
 |---|---|
@@ -66,6 +66,7 @@ Six focused crates, each with a single responsibility. All are `#![no_std]` + `#
 | `bare-metal-evm-nibble` | Hex-prefix nibble paths, `u4` abstraction, packed nibble buffers. |
 | `bare-metal-evm-trie` | Modified Merkle Patricia Trie: 4 node types, hexary traversal, inline optimization, depth-bounded recursion. |
 | `bare-metal-evm-state` | Account model, `WorldState` (caches + journal + commit), EIP-158 empty-account pruning, code storage. |
+| `bare-metal-evm-gas` | Gas metering: intrinsic gas, quadratic memory expansion, EIP-2929 access sets, EIP-2200 SSTORE, EIP-150 63/64 rule, EIP-3860 initcode cost, precompile gas costs. |
 
 The workspace root crate (`bare-metal-evm`) re-exports everything for convenience.
 
@@ -94,9 +95,9 @@ All `#![no_std]`, `#![deny(unsafe_code)]`, zero external deps.
 
 | | |
 |---|---|
-| Tests | 300 |
-| Lines (src, ex. lib.rs) | 7,191 |
-| Crates | 6 |
+| Tests | 469 |
+| Lines (src, ex. lib.rs) | 10,037 |
+| Crates | 7 |
 
 `cargo test --workspace` and `cargo clippy -- -D warnings` both clean.
 
@@ -110,6 +111,7 @@ All `#![no_std]`, `#![deny(unsafe_code)]`, zero external deps.
 - Typed `NibbleError` replaces `Result<(), ()>` in nibble ops
 - Keccak-256 XOR block bounds: `debug_assert` → `assert`
 - Removed dead public API (`drain`, `split_first`, `split_at`)
+- **New crate: `bare-metal-evm-gas`** — full gas metering (intrinsic, memory, access sets, SSTORE truth table, CALL 63/64, initcode, precompile costs, EIP-7623)
 
 ### Install
 
@@ -504,7 +506,7 @@ Built layer by layer, each depending only on what's below it:
 - [x] **Layer 0 — Primitive Arithmetic**: `U256`/`U512`, schoolbook multiplication with `u128` limb-widening (`MULX` hint), Knuth's Algorithm D division, two's complement, `no_std` panic handler
 - [x] **Layer 1 — Serialization & Sponge**: Recursive RLP encoder/decoder (five prefix ranges, strict minimalism), HP nibble encoding (four prefix flags), bitwise Keccak-256 (24-round sponge permutation, correct Ethereum padding)
 - [x] **Layer 2 — State Management**: Modified MPT (virtual `u4` nibble iterator, four node types, node splitting surgery, inline optimization, depth-bounded recursion), account model, world state σ, state journaling and checkpoint/rollback
-- [ ] **Layer 3 — Resource Metering**: Quadratic memory gas formula, EIP-2929 warm/cold access sets, EIP-150 63/64 rule for sub-call gas forwarding
+- [x] **Layer 3 — Resource Metering**: Quadratic memory gas formula, EIP-2929 warm/cold access sets, EIP-150 63/64 rule for sub-call gas forwarding
 - [ ] **Layer 4 — Engine Core**: Function pointer dispatch table, static jump map pre-scanner, Z-function exceptional halting checks, hot opcode inlining (`PUSH`/`DUP`/`SWAP`/`JUMP`), fetch-decode-execute loop, log processing and bloom filter construction
 - [ ] **Layer 5 — Compliance & Precompiles**: All ~144 opcodes, `ECRECOVER` (Secp256k1 point arithmetic over GF(p)), `SHA256`, `RIPEMD160`, `IDENTITY`, `MODEXP`, BN256 operations, transient storage (`TSTORE`/`TLOAD`), EOF container validation (EIP-3540/3541), typed transactions (EIP-2718)
 

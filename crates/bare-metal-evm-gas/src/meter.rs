@@ -153,6 +153,20 @@ impl GasMeter {
         Ok(())
     }
 
+    /// Initialize a storage slot with its pre-existing value. Must be
+    /// called before the first `charge_sstore` for a slot to ensure
+    /// correct gas accounting (EIP-2200 truth table relies on the
+    /// original value). Callers should fetch the current on-chain value
+    /// and pass it here.
+    pub fn initialize_storage_slot(
+        &mut self,
+        address: &[u8; 20],
+        slot: U256,
+        value: U256,
+    ) {
+        self.sstore.initialize_slot(address, slot, value);
+    }
+
     /// Compute gas cost for a child call. Returns
     /// `(cost_to_caller, gas_forwarded_to_child)`.
     pub fn gas_for_call(
@@ -632,5 +646,30 @@ mod tests {
         m.charge_sstore(&test_addr(), slot, U256::from_u64(1))
             .unwrap();
         assert!(m.remaining() > 0);
+    }
+
+    #[test]
+    fn meter_initialize_storage_slot_clean_modify() {
+        let mut m = GasMeter::new(200_000, b"", &[], false, &origin(), Some(&to())).unwrap();
+        let addr = test_addr();
+        let slot = U256::from_u64(0);
+        // Initialize with pre-existing non-zero value
+        m.initialize_storage_slot(&addr, slot, U256::from_u64(42));
+        // charge_sstore with a different value: clean modify (x,x,y)
+        // cost = cold_addr(2600) + cold_slot(2100) + clean_modify(2900) = 7600
+        m.charge_sstore(&addr, slot, U256::from_u64(99)).unwrap();
+        assert_eq!(m.remaining(), 200_000 - 21_000 - 7_600);
+    }
+
+    #[test]
+    fn meter_initialize_storage_slot_clean_clear() {
+        let mut m = GasMeter::new(200_000, b"", &[], false, &origin(), Some(&to())).unwrap();
+        let addr = test_addr();
+        let slot = U256::from_u64(0);
+        // Initialize with pre-existing non-zero value
+        m.initialize_storage_slot(&addr, slot, U256::from_u64(42));
+        // charge_sstore to zero: clean clear (x,x,0) — gets refund
+        m.charge_sstore(&addr, slot, U256::zero()).unwrap();
+        assert_eq!(m.refund(), 4800);
     }
 }

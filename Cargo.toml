@@ -48,6 +48,7 @@ bare-metal-evm-gas = { path = "crates/bare-metal-evm-gas", version = "0.2.0" }
 
 [dev-dependencies]
 hex.workspace = true
+proptest = "1.5"
 
 [features]
 default = []

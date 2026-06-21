@@ -12,3 +12,6 @@ publish = ["crates-io", "github"]
 
 [dependencies]
 bare-metal-evm-types = { workspace = true }
+
+[dev-dependencies]
+proptest = "1.5"
