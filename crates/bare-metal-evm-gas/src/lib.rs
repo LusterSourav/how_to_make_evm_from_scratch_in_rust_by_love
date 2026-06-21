@@ -19,5 +19,6 @@ pub mod sha3;
 mod sstore;
 mod transient;
 
+pub use access::AccessListItem;
 pub use error::GasError;
 pub use meter::GasMeter;

@@ -8,7 +8,9 @@ use crate::constants::{COLD_ACCOUNT_ACCESS_COST, COLD_SLOAD_COST, WARM_STORAGE_R
 /// storage keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccessListItem {
+    /// The 20-byte address to pre-warm.
     pub address: [u8; 20],
+    /// Storage keys (32-byte slot identifiers) to pre-warm for this address.
     pub storage_keys: Vec<[u8; 32]>,
 }
 

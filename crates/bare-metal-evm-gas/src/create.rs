@@ -41,6 +41,18 @@ pub fn initcode_word_cost(initcode_len: u64) -> Result<u64, GasError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    #[test]
+    fn prop_initcode_word_cost_matches_expected() {
+        proptest::proptest!(proptest::test_runner::Config::default(),
+            |(len in 0..=2048u64)|
+        {
+            let words = len.div_ceil(32);
+            let expected = INIT_CODE_WORD_GAS * words;
+            prop_assert_eq!(initcode_word_cost(len).unwrap(), expected);
+        });
+    }
 
     #[test]
     fn create_empty_initcode_no_deployed_code() {
@@ -87,5 +99,30 @@ mod tests {
     #[test]
     fn initcode_word_cost_large() {
         assert_eq!(initcode_word_cost(49152).unwrap(), 49152 / 32 * 2);
+    }
+
+    #[test]
+    fn initcode_word_cost_zero() {
+        assert_eq!(initcode_word_cost(0).unwrap(), 0);
+    }
+
+    #[test]
+    fn initcode_word_cost_partial_last_word() {
+        // 31 bytes rounds up to 1 word
+        assert_eq!(initcode_word_cost(31).unwrap(), 2);
+        // 49151 bytes is just under the limit
+        assert!(initcode_word_cost(49151).is_ok());
+    }
+
+    #[test]
+    fn initcode_word_cost_exceeds_max() {
+        // One byte over the limit
+        assert_eq!(initcode_word_cost(49153), Err(GasError::OutOfGas));
+    }
+
+    #[test]
+    fn create_gas_deployed_code_overflow() {
+        // Very large deployed_code_len triggers checked_mul overflow
+        assert_eq!(create_gas(0, u64::MAX, false), Err(GasError::Overflow));
     }
 }

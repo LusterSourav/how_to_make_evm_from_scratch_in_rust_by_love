@@ -1,8 +1,11 @@
 use core::fmt;
 
+/// Errors that can occur during gas metering operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GasError {
+    /// The transaction or operation has insufficient remaining gas.
     OutOfGas,
+    /// A gas calculation overflowed the maximum `u64` value.
     Overflow,
 }
 

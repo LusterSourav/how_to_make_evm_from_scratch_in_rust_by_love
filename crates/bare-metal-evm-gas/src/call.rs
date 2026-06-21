@@ -151,4 +151,16 @@ mod tests {
     fn eip150_available_gas_one() {
         assert_eq!(eip150_available_gas(1), 1);
     }
+
+    #[test]
+    fn child_call_max_remaining_with_stipend() {
+        // With maximum remaining gas, EIP-150's 63/64 rule prevents
+        // forwarded + stipend from overflowing u64.
+        let result = gas_for_child_call(u64::MAX, u64::MAX, true, false);
+        assert!(result.is_ok());
+        let (cost, forwarded) = result.unwrap();
+        assert_eq!(cost, 700 + 9_000);
+        assert!(forwarded < u64::MAX);
+        assert!(forwarded > u64::MAX / 2);
+    }
 }

@@ -222,4 +222,15 @@ mod tests {
     fn unknown_precompile() {
         assert!(precompile_gas(0x13, 0).is_none());
     }
+
+    #[test]
+    fn bn256_pairing_gas_overflow() {
+        // Very large num_pairs triggers checked_mul overflow
+        assert_eq!(bn256_pairing_gas(u64::MAX), Err(GasError::Overflow));
+    }
+
+    #[test]
+    fn bls12381_pairing_gas_overflow() {
+        assert_eq!(bls12381_pairing_gas(u64::MAX), Err(GasError::Overflow));
+    }
 }

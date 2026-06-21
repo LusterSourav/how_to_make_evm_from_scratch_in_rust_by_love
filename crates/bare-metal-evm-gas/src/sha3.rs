@@ -58,4 +58,11 @@ mod tests {
     fn sha3_large() {
         assert_eq!(sha3_gas(1024).unwrap(), 30 + 32 * 6);
     }
+
+    #[test]
+    fn sha3_overflow_safe_max() {
+        // Maximum possible input size on 64-bit won't overflow u64
+        let result = sha3_gas(usize::MAX);
+        assert!(result.is_ok());
+    }
 }

@@ -9,6 +9,11 @@ use crate::memory;
 use crate::sstore::SstoreTracker;
 use crate::transient::TransientStorage;
 
+/// EVM gas meter implementing EIP-150, EIP-2929, EIP-2200, EIP-3529,
+/// EIP-3860, EIP-7623, and EIP-1153 gas cost rules.
+///
+/// Tracks remaining gas, memory expansion, SSTORE refunds, access
+/// list warmth, and transient storage within a single transaction.
 #[derive(Debug, Clone)]
 pub struct GasMeter {
     initial_gas: u64,
@@ -25,6 +30,11 @@ impl GasMeter {
     /// Create a new gas meter. Deducts intrinsic gas, warms the access
     /// list plus precompile defaults, and rejects the transaction if the
     /// EIP-7623 calldata floor exceeds `initial_gas`.
+    ///
+    /// When `is_create` is `true` the intrinsic gas base is 53000
+    /// (contract creation) instead of 21000 (value transfer). When `to`
+    /// is `None` the recipient address is not pre-warmed; pass
+    /// `Some(&address)` to warm the recipient on construction.
     pub fn new(
         initial_gas: u64,
         calldata: &[u8],
@@ -208,21 +218,27 @@ impl GasMeter {
         Ok(())
     }
 
+    /// Remaining gas after all charges so far.
     #[must_use]
     pub fn remaining(&self) -> u64 {
         self.remaining
     }
 
+    /// Number of active 32-byte memory words.
     #[must_use]
     pub fn memory_words(&self) -> usize {
         self.memory_words
     }
 
+    /// Allocated memory size in bytes (`memory_words * 32`), which is
+    /// the word-aligned size rather than the last `new_byte_size` passed
+    /// to `charge_memory`.
     #[must_use]
     pub fn memory_size(&self) -> usize {
         self.memory_words * 32
     }
 
+    /// Current accumulated refund (may be negative before `apply_refund`).
     #[must_use]
     pub fn refund(&self) -> i64 {
         self.refund
@@ -292,11 +308,21 @@ mod tests {
     }
 
     #[test]
-    fn meter_out_of_gas_on_floor() {
-        // 12 zero-byte calldata: intrinsic = 21000 + 48 = 21048
-        // floor = 12 * 10 = 120 > 1000
+    fn meter_out_of_gas_on_intrinsic_with_calldata() {
+        // 12 zero-byte calldata: intrinsic = 21000 + 12*4 = 21048
+        // initial_gas = 1000 < intrinsic, so this fails before the floor check
         let calldata = vec![0u8; 12];
         let result = GasMeter::new(1000, &calldata, &[], false, &origin(), Some(&to()));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn meter_out_of_gas_on_calldata_floor() {
+        // 8000 zero-byte calldata: intrinsic = 21000 + 8000*4 = 53000
+        // floor = 8000 * 10 = 80000
+        // initial_gas = 60000 passes intrinsic (53000 < 60000) but fails floor (80000 > 60000)
+        let calldata = vec![0u8; 8000];
+        let result = GasMeter::new(60000, &calldata, &[], false, &origin(), Some(&to()));
         assert!(result.is_err());
     }
 
@@ -388,7 +414,7 @@ mod tests {
     }
 
     #[test]
-    fn meter_charge_sstore_sentry() {
+    fn meter_charge_sstore_insufficient_gas_above_sentry() {
         let mut m = GasMeter::new(100_000, b"", &[], false, &origin(), Some(&to())).unwrap();
         let slot = U256::from_u64(0);
         m.charge(m.remaining() - SSTORE_SENTRY_GAS - 1).unwrap();
@@ -546,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn meter_charge_sstore_warm_clean_modify() {
+    fn meter_charge_sstore_warm_dirty_modify() {
         // After a cold set (0→x), a second write to the same slot
         // becomes dirty-modify (0,x,y): cost = 100 addr + 100 slot + 100 base.
         let mut m = GasMeter::new(100_000, b"", &[], false, &origin(), Some(&to())).unwrap();
@@ -654,6 +680,33 @@ mod tests {
         // cost = cold_addr(2600) + cold_slot(2100) + clean_modify(2900) = 7600
         m.charge_sstore(&addr, slot, U256::from_u64(99)).unwrap();
         assert_eq!(m.remaining(), 200_000 - 21_000 - 7_600);
+    }
+
+    #[test]
+    fn meter_charge_sload_after_initialize_storage_slot() {
+        let mut m = GasMeter::new(200_000, b"", &[], false, &origin(), Some(&to())).unwrap();
+        let addr = test_addr();
+        let slot = U256::from_u64(0);
+        m.initialize_storage_slot(&addr, slot, U256::from_u64(42));
+        // Even though slot is initialized, first SLOAD is still cold
+        m.charge_sload(&addr, slot).unwrap();
+        assert_eq!(m.remaining(), 200_000 - 21_000 - COLD_SLOAD_COST);
+    }
+
+    #[test]
+    fn meter_initialize_storage_slot_after_charge_sstore_noop() {
+        let mut m = GasMeter::new(200_000, b"", &[], false, &origin(), Some(&to())).unwrap();
+        let addr = test_addr();
+        let slot = U256::from_u64(0);
+        // First SSTORE: cold set 0 -> 1
+        m.charge_sstore(&addr, slot, U256::from_u64(1)).unwrap();
+        let after_sstore = m.remaining();
+        // initialize_storage_slot after SSTORE should be a no-op (slot already tracked)
+        m.initialize_storage_slot(&addr, slot, U256::from_u64(1));
+        // Second SSTORE: warm noop (1,1,1)
+        m.charge_sstore(&addr, slot, U256::from_u64(1)).unwrap();
+        // warm addr(100) + warm slot(100) + noop(100) = 300
+        assert_eq!(after_sstore - m.remaining(), 300);
     }
 
     #[test]

@@ -3,139 +3,197 @@
 
 // Transaction intrinsic gas
 
+/// Base gas cost for a standard transaction (EIP-155).
 pub const TX_GAS: u64 = 21_000;
+/// Base gas cost for a contract creation transaction.
 pub const TX_CREATE_GAS: u64 = 53_000;
+/// Gas cost per zero byte of calldata (EIP-2028).
 pub const TX_DATA_ZERO_GAS: u64 = 4;
+/// Gas cost per non-zero byte of calldata (EIP-2028).
 pub const TX_DATA_NON_ZERO_GAS: u64 = 16;
 
 // Memory expansion — quadratic cost formula
 
+/// Linear coefficient for memory expansion (EIP-150).
 pub const MEMORY_GAS: u64 = 3;
+/// Maximum allocatable memory size (1 MB).
 pub const MEMORY_MAX_SIZE: usize = 1 << 20;
+/// Divisor for the quadratic memory cost term (Yellow Paper).
 pub const QUAD_COEFF_DIV: u64 = 512;
 
 // EIP-2929 access list costs
 
+/// Gas cost for the first access to an address.
 pub const COLD_ACCOUNT_ACCESS_COST: u64 = 2_600;
+/// Gas cost for the first access to a storage slot.
 pub const COLD_SLOAD_COST: u64 = 2_100;
+/// Gas cost for repeated (warm) address or storage access.
 pub const WARM_STORAGE_READ_COST: u64 = 100;
+/// Gas cost per address in the EIP-2930 access list.
 pub const TX_ACCESS_LIST_ADDRESS_GAS: u64 = 2_400;
+/// Gas cost per storage key in the EIP-2930 access list.
 pub const TX_ACCESS_LIST_STORAGE_KEY_GAS: u64 = 1_900;
 
 // SSTORE costs (EIP-2200 + EIP-2929 + EIP-3529 + EIP-6780)
 
+/// Gas cost for setting a storage slot from zero to non-zero.
 pub const SSTORE_SET_GAS: u64 = 20_000;
+/// Gas cost for resetting a storage slot (EIP-2929 variant).
 pub const SSTORE_RESET_GAS_EIP2929: u64 = 5_000 - COLD_SLOAD_COST;
+/// Gas refund for clearing a storage slot (EIP-3529).
 pub const SSTORE_CLEARS_SCHEDULE: u64 = 4_800;
+/// Minimum remaining gas required before SSTORE is allowed.
 pub const SSTORE_SENTRY_GAS: u64 = 2_300;
 
 // CALL variants (EIP-150 63/64 rule)
 
+/// Gas cost for a CALL operation base.
 pub const CALL_GAS: u64 = 700;
+/// Gas cost for transferring value with a CALL.
 pub const CALL_VALUE_TRANSFER_GAS: u64 = 9_000;
+/// Gas stipend added to the child call when value is transferred.
 pub const CALL_STIPEND: u64 = 2_300;
+/// Gas cost when CALL creates a new account.
 pub const CALL_NEW_ACCOUNT_GAS: u64 = 25_000;
 
 // CREATE / CREATE2
 
+/// Gas cost for CREATE / CREATE2 base.
 pub const CREATE_GAS: u64 = 32_000;
+/// Gas cost per byte of deployed code.
 pub const CREATE_DATA_GAS: u64 = 200;
-// EIP-3860 — initcode cost metering
+/// Per-word gas cost for initcode (EIP-3860).
 pub const INIT_CODE_WORD_GAS: u64 = 2;
+/// Maximum initcode size in bytes (EIP-3860).
 pub const MAX_INIT_CODE_SIZE: u64 = 49_152;
 
 // SELFDESTRUCT (EIP-150, EIP-6780)
 
+/// Gas cost for SELFDESTRUCT (EIP-150).
 pub const SELFDESTRUCT_GAS_EIP150: u64 = 5_000;
 
 // LOG
 
+/// Gas cost per LOG operation base.
 pub const LOG_GAS: u64 = 375;
+/// Gas cost per LOG topic.
 pub const LOG_TOPIC_GAS: u64 = 375;
+/// Gas cost per byte of LOG data.
 pub const LOG_DATA_GAS: u64 = 8;
 
 // EXP
 
+/// Gas cost for EXP base.
 pub const EXP_GAS: u64 = 10;
+/// Gas cost per byte of the exponent.
 pub const EXP_BYTE_GAS: u64 = 50;
 
 // SHA3 (KECCAK256)
 
+/// Gas cost for KECCAK256 base.
 pub const KECCAK256_GAS: u64 = 30;
+/// Gas cost per word of KECCAK256 input.
 pub const KECCAK256_WORD_GAS: u64 = 6;
 
 // Copy operations (CALLDATACOPY, CODECOPY, EXTCODECOPY, RETURNDATACOPY, MCOPY)
 
+/// Gas cost per word for copy operations.
 pub const COPY_GAS: u64 = 3;
 
 // JUMPDEST
 
+/// Gas cost for JUMPDEST (not actually charged at the JUMPDEST instruction).
 pub const JUMPDEST_GAS: u64 = 1;
 
 // EIP-1153 transient storage
 
+/// Gas cost for TLOAD (same as warm storage read).
 pub const TLOAD_GAS: u64 = WARM_STORAGE_READ_COST;
+/// Gas cost for TSTORE (same as warm storage read).
 pub const TSTORE_GAS: u64 = WARM_STORAGE_READ_COST;
 
 // Refund (EIP-3529)
 
+/// Maximum refund is gas_used / MAX_REFUND_QUOTIENT.
 pub const MAX_REFUND_QUOTIENT: u64 = 5;
 
 // EIP-7623 — calldata floor divisor (Pectra)
 
+/// Divisor for the calldata floor calculation.
 pub const EIP7623_CALLDATA_FLOOR_DIVISOR: u64 = 10;
 
 // ── Precompile gas costs ──────────────────────────────────────────
 
 // ECRECOVER
+/// Gas cost for ECRECOVER (precompile 0x01).
 pub const ECRECOVER_GAS: u64 = 3_000;
 
 // SHA256
+/// Gas cost base for SHA256 (precompile 0x02).
 pub const SHA256_BASE_GAS: u64 = 60;
+/// Gas cost per input word for SHA256.
 pub const SHA256_PER_WORD_GAS: u64 = 12;
 
 // RIPEMD160
+/// Gas cost base for RIPEMD160 (precompile 0x03).
 pub const RIPEMD160_BASE_GAS: u64 = 600;
+/// Gas cost per input word for RIPEMD160.
 pub const RIPEMD160_PER_WORD_GAS: u64 = 120;
 
 // IDENTITY
+/// Gas cost base for IDENTITY (precompile 0x04).
 pub const IDENTITY_BASE_GAS: u64 = 15;
+/// Gas cost per input word for IDENTITY.
 pub const IDENTITY_PER_WORD_GAS: u64 = 3;
 
 // Bn256Add (precompile 06) — updated by EIP-1108 (Istanbul)
+/// Gas cost for BN256ADD (EIP-1108 Istanbul).
 pub const BN256ADD_GAS_ISTANBUL: u64 = 150;
 
 // Bn256ScalarMul (precompile 07) — updated by EIP-1108 (Istanbul)
+/// Gas cost for BN256SCALARMUL (EIP-1108 Istanbul).
 pub const BN256SCALARMUL_GAS_ISTANBUL: u64 = 6_000;
 
 // Bn256Pairing (precompile 08) — updated by EIP-1108 (Istanbul)
+/// Base gas cost for BN256PAIRING (EIP-1108 Istanbul).
 pub const BN256PAIRING_BASE_GAS_ISTANBUL: u64 = 45_000;
+/// Gas cost per additional point pair for BN256PAIRING.
 pub const BN256PAIRING_PER_POINT_GAS_ISTANBUL: u64 = 34_000;
 
 // Bls12381G1Add (precompile 10)
+/// Gas cost for BLS12-381 G1 addition.
 pub const BLS12381_G1ADD_GAS: u64 = 375;
 
 // Bls12381G1Mul (precompile 11)
+/// Gas cost for BLS12-381 G1 multiplication.
 pub const BLS12381_G1MUL_GAS: u64 = 12_000;
 
 // Bls12381G2Add (precompile 12)
+/// Gas cost for BLS12-381 G2 addition.
 pub const BLS12381_G2ADD_GAS: u64 = 600;
 
 // Bls12381G2Mul (precompile 13)
+/// Gas cost for BLS12-381 G2 multiplication.
 pub const BLS12381_G2MUL_GAS: u64 = 22_500;
 
 // Bls12381Pairing (precompile 14)
+/// Base gas cost for BLS12-381 pairing check.
 pub const BLS12381_PAIRING_BASE_GAS: u64 = 37_700;
+/// Gas cost per additional pair for BLS12-381 pairing.
 pub const BLS12381_PAIRING_PER_PAIR_GAS: u64 = 32_600;
 
 // Bls12381MapG1 (precompile 15)
+/// Gas cost for BLS12-381 map-to-G1.
 pub const BLS12381_MAP_G1_GAS: u64 = 5_500;
 
 // Bls12381MapG2 (precompile 16)
+/// Gas cost for BLS12-381 map-to-G2.
 pub const BLS12381_MAP_G2_GAS: u64 = 23_800;
 
 // P256Verify (precompile 17, added by EIP-7212)
+/// Gas cost for P256VERIFY (EIP-7212).
 pub const P256VERIFY_GAS: u64 = 6_900;
 
 // BlobPointEval (precompile 18, added by EIP-4844)
+/// Gas cost for BLOB_POINT_EVAL (EIP-4844).
 pub const BLOB_POINT_EVAL_GAS: u64 = 50_000;

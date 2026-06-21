@@ -14,6 +14,18 @@ pub fn copy_gas(data_len: usize) -> Result<u64, GasError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    #[test]
+    fn prop_copy_gas_matches_expected() {
+        proptest::proptest!(proptest::test_runner::Config::default(),
+            |(len in 0..=2048usize)|
+        {
+            let words = if len == 0 { 0 } else { (len - 1) / 32 + 1 };
+            let expected = COPY_GAS * words as u64;
+            prop_assert_eq!(copy_gas(len).unwrap(), expected);
+        });
+    }
 
     #[test]
     fn copy_zero() {
@@ -43,5 +55,12 @@ mod tests {
     #[test]
     fn copy_large() {
         assert_eq!(copy_gas(1024).unwrap(), 32 * 3);
+    }
+
+    #[test]
+    fn copy_overflow_safe_max() {
+        // Maximum possible copy size on 64-bit won't overflow u64
+        let result = copy_gas(usize::MAX);
+        assert!(result.is_ok());
     }
 }

@@ -75,7 +75,7 @@ fn sstore_with_refund_capped_by_eip3529() {
 
 #[test]
 fn eip7623_calldata_floor() {
-    // 12 zero-byte calldata: floor = 120 tokens * 10 = 1200
+    // 12 zero-byte calldata: tokens = 12, floor = 12 * 10 = 120
     let calldata = [0u8; 12];
     let mut m = GasMeter::new(100_000, &calldata, &[], false, &origin(), Some(&to())).unwrap();
     // Intrinsic: 21000 + 12*4 = 21048, remaining: 78952
@@ -85,9 +85,9 @@ fn eip7623_calldata_floor() {
     m.charge(m.remaining()).unwrap();
 
     m.apply_refund().unwrap();
-    // floor = min(1200, 100000) = 1200
+    // floor = min(120, 100000) = 120
     // gas_used_before_floor = 100000
-    // final_used = max(100000, 1200) = 100000
+    // final_used = max(100000, 120) = 100000
     assert_eq!(m.remaining(), 0);
 }
 
@@ -284,11 +284,8 @@ fn sstore_refund_cycle_zero_net() {
 }
 
 #[test]
-fn precompile_gas_overflow_handling() {
-    // sha256: gas = sha256_base(60) + words * 12
-    // words = ceil(input_len / 32). Use input_len = (u64::MAX/12)*32 to overflow.
-    // But usize can't hold that on 64-bit. Pass max possible: 0 input works.
-    // Instead verify that large-but-not-insane values return Some(Ok(...))
+fn precompile_gas_large_valid() {
+    // SHA256 with 10_000_000 bytes: 312500 words, gas = 60 + 312500*12
     let ok = bare_metal_evm_gas::precompile::precompile_gas(0x02, 10_000_000);
     assert_eq!(ok, Some(Ok(60 + 312500 * 12)));
 }
@@ -328,6 +325,68 @@ fn charge_sstore_sentry_exact_boundary() {
     // SSTORE sentry requires remaining > 2300, so this should fail
     let result = m.charge_sstore(&test_addr(), slot, U256::from_u64(1));
     assert_eq!(result, Err(bare_metal_evm_gas::GasError::OutOfGas));
+}
+
+#[test]
+fn eip7623_all_nonzero_calldata() {
+    // 100 non-zero bytes: tokens = 100 * 4 = 400, floor = 400 * 10 = 4000
+    // intrinsic = 21000 + 100*16 = 22600
+    let calldata = [0xFFu8; 100];
+    let mut m = GasMeter::new(100_000, &calldata, &[], false, &origin(), Some(&to())).unwrap();
+    assert_eq!(m.remaining(), 100_000 - 22_600);
+
+    m.charge(m.remaining()).unwrap();
+    m.apply_refund().unwrap();
+    // floor = min(4000, 100000) = 4000, final_used = max(100000, 4000) = 100000
+    assert_eq!(m.remaining(), 0);
+}
+
+#[test]
+fn eip7623_mixed_calldata() {
+    // 10 zero bytes + 10 non-zero: tokens = 10*1 + 10*4 = 50, floor = 500
+    let calldata: Vec<u8> = (0..20).map(|i| if i < 10 { 0 } else { 0xFF }).collect();
+    let mut m = GasMeter::new(100_000, &calldata, &[], false, &origin(), Some(&to())).unwrap();
+    // intrinsic = 21000 + 10*4 + 10*16 = 21200
+    assert_eq!(m.remaining(), 100_000 - 21_200);
+
+    m.charge(m.remaining()).unwrap();
+    m.apply_refund().unwrap();
+    assert_eq!(m.remaining(), 0);
+}
+
+#[test]
+fn eip7623_floor_equals_initial_gas_accepted() {
+    // 400 zero bytes: tokens = 400, floor = 4000, intrinsic = 21000 + 400*4 = 22600
+    // initial_gas = 22600 → intrinsic == initial_gas, remaining = 0
+    let calldata = [0u8; 400];
+    let m = GasMeter::new(22_600, &calldata, &[], false, &origin(), Some(&to())).unwrap();
+    assert_eq!(m.remaining(), 0);
+}
+
+#[test]
+fn duplicate_access_list_entries() {
+    let key = [0xABu8; 32];
+    let items = vec![
+        bare_metal_evm_gas::AccessListItem {
+            address: [0xAA; 20],
+            storage_keys: vec![key],
+        },
+        bare_metal_evm_gas::AccessListItem {
+            address: [0xAA; 20],
+            storage_keys: vec![key],
+        },
+    ];
+    let m = GasMeter::new(100_000, b"", &items, false, &origin(), Some(&to())).unwrap();
+    // Access list costs: 2 * 2400 (addresses) + 2 * 1900 (keys) = 8600
+    // Intrinsic: 21000 + 8600 = 29600
+    assert_eq!(m.remaining(), 100_000 - 29_600);
+    // Warm access to the duplicate address + slot costs only 100 each
+    let mut m = m;
+    let before = m.remaining();
+    m.charge_account_access(&[0xAA; 20]).unwrap();
+    m.charge_sload(&[0xAA; 20], U256::from_bytes_be(key))
+        .unwrap();
+    assert_eq!(before - m.remaining(), 200);
 }
 
 #[test]
