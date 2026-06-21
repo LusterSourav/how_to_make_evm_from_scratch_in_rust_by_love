@@ -44,7 +44,8 @@ fn sstore_clean_modify_after_initialize() {
 
     m.initialize_storage_slot(&test_addr(), slot, U256::from_u64(100));
     // Clean modify (100,100,200): base=2900, cold_addr=2600, cold_slot=2100
-    m.charge_sstore(&test_addr(), slot, U256::from_u64(200)).unwrap();
+    m.charge_sstore(&test_addr(), slot, U256::from_u64(200))
+        .unwrap();
     let expected_gas = 21_000 + 2_600 + 2_100 + 2_900;
     assert_eq!(m.remaining(), 200_000 - expected_gas);
 }
@@ -55,10 +56,12 @@ fn sstore_with_refund_capped_by_eip3529() {
     let slot = U256::from_u64(0);
 
     // Cold set: 0 -> 1 (costs 20000 + 2600 + 2100 = 24700)
-    m.charge_sstore(&test_addr(), slot, U256::from_u64(1)).unwrap();
+    m.charge_sstore(&test_addr(), slot, U256::from_u64(1))
+        .unwrap();
 
     // Clear: 1 -> 0 (costs 100 + 100 + 100 = 300, refund +4800)
-    m.charge_sstore(&test_addr(), slot, U256::from_u64(0)).unwrap();
+    m.charge_sstore(&test_addr(), slot, U256::from_u64(0))
+        .unwrap();
     assert_eq!(m.refund(), 4800);
 
     m.apply_refund().unwrap();
@@ -195,8 +198,10 @@ fn transient_storage_independent_addresses() {
     let addr_a = [0xAA; 20];
     let addr_b = [0xBB; 20];
 
-    m.charge_tstore(&addr_a, slot_a, U256::from_u64(100)).unwrap();
-    m.charge_tstore(&addr_b, slot_b, U256::from_u64(200)).unwrap();
+    m.charge_tstore(&addr_a, slot_a, U256::from_u64(100))
+        .unwrap();
+    m.charge_tstore(&addr_b, slot_b, U256::from_u64(200))
+        .unwrap();
 
     let val_a = m.charge_tload(&addr_a, slot_a).unwrap();
     let val_b = m.charge_tload(&addr_b, slot_b).unwrap();

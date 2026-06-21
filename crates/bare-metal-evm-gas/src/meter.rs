@@ -158,12 +158,7 @@ impl GasMeter {
     /// correct gas accounting (EIP-2200 truth table relies on the
     /// original value). Callers should fetch the current on-chain value
     /// and pass it here.
-    pub fn initialize_storage_slot(
-        &mut self,
-        address: &[u8; 20],
-        slot: U256,
-        value: U256,
-    ) {
+    pub fn initialize_storage_slot(&mut self, address: &[u8; 20], slot: U256, value: U256) {
         self.sstore.initialize_slot(address, slot, value);
     }
 
