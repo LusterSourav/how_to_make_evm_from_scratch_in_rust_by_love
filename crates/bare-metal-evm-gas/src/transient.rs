@@ -13,20 +13,6 @@ impl TransientStorage {
         Self::default()
     }
 
-    /// Returns the gas cost for a TLOAD.
-    #[must_use]
-    #[cfg(test)]
-    pub fn cost_tload() -> u64 {
-        TLOAD_GAS
-    }
-
-    /// Returns the gas cost for a TSTORE.
-    #[must_use]
-    #[cfg(test)]
-    pub fn cost_tstore() -> u64 {
-        TSTORE_GAS
-    }
-
     /// Return the gas cost for a TLOAD. Use `get()` to read the stored value.
     pub fn gas_cost_tload(&self) -> u64 {
         TLOAD_GAS
@@ -91,12 +77,14 @@ mod tests {
 
     #[test]
     fn transient_cost_tload() {
-        assert_eq!(TransientStorage::cost_tload(), TLOAD_GAS);
+        assert_eq!(TransientStorage::new().gas_cost_tload(), TLOAD_GAS);
     }
 
     #[test]
     fn transient_cost_tstore() {
-        assert_eq!(TransientStorage::cost_tstore(), TSTORE_GAS);
+        let mut ts = TransientStorage::new();
+        let cost = ts.store(&[0x01; 20], U256::zero(), U256::from_u64(42));
+        assert_eq!(cost, TSTORE_GAS);
     }
 
     #[test]

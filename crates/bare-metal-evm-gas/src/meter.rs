@@ -144,6 +144,23 @@ impl GasMeter {
         Ok(())
     }
 
+    /// Charge for SELFDESTRUCT. Bundles the base cost with the
+    /// beneficiary address access (EIP-2929 cold/warm).
+    pub fn charge_selfdestruct(
+        &mut self,
+        beneficiary: &[u8; 20],
+        has_value: bool,
+    ) -> Result<(), GasError> {
+        let base = crate::selfdestruct::selfdestruct_gas(has_value)?;
+        let access_cost = self.access_set.touch_address(beneficiary);
+        let total = base.checked_add(access_cost).ok_or(GasError::Overflow)?;
+        self.remaining = self
+            .remaining
+            .checked_sub(total)
+            .ok_or(GasError::OutOfGas)?;
+        Ok(())
+    }
+
     /// Charge for a TLOAD. Returns the stored value (zero if unset).
     pub fn charge_tload(&mut self, address: &[u8; 20], slot: U256) -> Result<U256, GasError> {
         let cost = self.transient.gas_cost_tload();

@@ -1,8 +1,9 @@
 use crate::constants::{CALL_VALUE_TRANSFER_GAS, SELFDESTRUCT_GAS_EIP150};
 use crate::error::GasError;
 
-/// Compute the SELFDESTRUCT gas cost. The caller is responsible for
-/// the access-set cost of the beneficiary (2600 cold / 100 warm).
+/// Compute the SELFDESTRUCT base gas cost (does NOT include
+/// beneficiary address access — use `GasMeter::charge_selfdestruct`
+/// which charges both atomically).
 ///
 /// Base cost = 5_000 + 9_000 (if value > 0)
 pub fn selfdestruct_gas(has_value: bool) -> Result<u64, GasError> {
