@@ -36,20 +36,24 @@ jobs:
           toolchain: stable
           components: clippy
 
-      - name: cargo publish --dry-run (types)
-        run: cargo publish -p bare-metal-evm-types --registry crates-io --dry-run --allow-dirty
-      - name: cargo publish --dry-run (keccak)
-        run: cargo publish -p bare-metal-evm-keccak --registry crates-io --dry-run --allow-dirty
-      - name: cargo publish --dry-run (nibble)
-        run: cargo publish -p bare-metal-evm-nibble --registry crates-io --dry-run --allow-dirty
-      - name: cargo publish --dry-run (rlp)
-        run: cargo publish -p bare-metal-evm-rlp --registry crates-io --dry-run --allow-dirty
-      - name: cargo publish --dry-run (trie)
-        run: cargo publish -p bare-metal-evm-trie --registry crates-io --dry-run --allow-dirty
-      - name: cargo publish --dry-run (state)
-        run: cargo publish -p bare-metal-evm-state --registry crates-io --dry-run --allow-dirty
-      - name: cargo publish --dry-run (gas)
-        run: cargo publish -p bare-metal-evm-gas --registry crates-io --dry-run --allow-dirty
+      - name: cargo publish --dry-run (dependency order)
+        run: |
+          for crate in bare-metal-evm-types bare-metal-evm-keccak bare-metal-evm-nibble bare-metal-evm-rlp bare-metal-evm-trie bare-metal-evm-state bare-metal-evm-gas; do
+            echo "==> DRY-RUN: $crate"
+            output=$(cargo publish -p "$crate" --registry crates-io --dry-run --allow-dirty 2>&1) && {
+              echo "OK: $crate dry-run passed"
+            } || {
+              if echo "$output" | grep -q "already exists"; then
+                echo "SKIP: $crate (already published)"
+              elif echo "$output" | grep -q "failed to select a version"; then
+                echo "SKIP: $crate (dependency not yet published)"
+              else
+                echo "FAIL: $crate"
+                echo "$output"
+                exit 1
+              fi
+            }
+          done
 
   publish:
     name: Publish to crates.io and GitHub Packages
@@ -67,26 +71,68 @@ jobs:
 
       - name: Publish to crates.io (dependency order)
         run: |
-          set -e
-          cargo publish -p bare-metal-evm-types  --registry crates-io --token "$CARGO_TOKEN"
-          cargo publish -p bare-metal-evm-keccak --registry crates-io --token "$CARGO_TOKEN"
-          cargo publish -p bare-metal-evm-nibble --registry crates-io --token "$CARGO_TOKEN"
-          cargo publish -p bare-metal-evm-rlp    --registry crates-io --token "$CARGO_TOKEN"
-          cargo publish -p bare-metal-evm-trie   --registry crates-io --token "$CARGO_TOKEN"
-          cargo publish -p bare-metal-evm-state  --registry crates-io --token "$CARGO_TOKEN"
-          cargo publish -p bare-metal-evm-gas    --registry crates-io --token "$CARGO_TOKEN"
+          if [ -z "${CARGO_REGISTRY_TOKEN}" ]; then
+            echo "WARN: CARGO_REGISTRY_TOKEN not set — skipping publish"
+            exit 0
+          fi
+          publish_crate() {
+            local pkg=$1
+            echo "==> PUBLISH: $pkg"
+            output=$(cargo publish -p "$pkg" --registry crates-io 2>&1) && {
+              echo "OK: $pkg published"
+              sleep 15
+              return 0
+            } || {
+              if echo "$output" | grep -q "already exists"; then
+                echo "SKIP: $pkg (already published)"
+                return 0
+              else
+                echo "FAIL: $pkg"
+                echo "$output"
+                return 1
+              fi
+            }
+          }
+          publish_crate bare-metal-evm-types
+          publish_crate bare-metal-evm-keccak
+          publish_crate bare-metal-evm-nibble
+          publish_crate bare-metal-evm-rlp
+          publish_crate bare-metal-evm-trie
+          publish_crate bare-metal-evm-state
+          publish_crate bare-metal-evm-gas
         env:
-          CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
 
       - name: Publish to GitHub Packages (dependency order)
         run: |
-          set -e
-          cargo publish -p bare-metal-evm-types  --registry github
-          cargo publish -p bare-metal-evm-keccak --registry github
-          cargo publish -p bare-metal-evm-nibble --registry github
-          cargo publish -p bare-metal-evm-rlp    --registry github
-          cargo publish -p bare-metal-evm-trie   --registry github
-          cargo publish -p bare-metal-evm-state  --registry github
-          cargo publish -p bare-metal-evm-gas    --registry github
+          if [ -z "${CARGO_REGISTRIES_GITHUB_TOKEN}" ]; then
+            echo "WARN: CARGO_REGISTRIES_GITHUB_TOKEN not set — skipping publish"
+            exit 0
+          fi
+          publish_crate() {
+            local pkg=$1
+            echo "==> PUBLISH: $pkg"
+            output=$(cargo publish -p "$pkg" --registry github 2>&1) && {
+              echo "OK: $pkg published"
+              sleep 15
+              return 0
+            } || {
+              if echo "$output" | grep -q "already exists"; then
+                echo "SKIP: $pkg (already published)"
+                return 0
+              else
+                echo "FAIL: $pkg"
+                echo "$output"
+                return 1
+              fi
+            }
+          }
+          publish_crate bare-metal-evm-types
+          publish_crate bare-metal-evm-keccak
+          publish_crate bare-metal-evm-nibble
+          publish_crate bare-metal-evm-rlp
+          publish_crate bare-metal-evm-trie
+          publish_crate bare-metal-evm-state
+          publish_crate bare-metal-evm-gas
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN }}

@@ -27,7 +27,7 @@ jobs:
 
       - name: Build and push OCI images to ghcr.io
         env:
-          IMAGE_TAG: 0.2.0
+          IMAGE_TAG: 0.3.0
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}
         run: |
@@ -36,7 +36,7 @@ jobs:
           for crate in bare-metal-evm-types bare-metal-evm-keccak bare-metal-evm-nibble bare-metal-evm-rlp bare-metal-evm-trie bare-metal-evm-state bare-metal-evm-gas; do
             IMAGE="ghcr.io/${OWNER_LOWER}/${REPO_LOWER}/${crate}:${IMAGE_TAG}"
             echo "==> Building $IMAGE"
-            printf 'FROM scratch\nCOPY target/package/%s-0.2.0.crate /%s-0.2.0.crate\n' "$crate" "$crate" > /tmp/Dockerfile
+            printf 'FROM scratch\nCOPY target/package/%s-0.3.0.crate /%s-0.3.0.crate\n' "$crate" "$crate" > /tmp/Dockerfile
             docker build -t "$IMAGE" -f /tmp/Dockerfile .
             docker push "$IMAGE"
           done
