@@ -76,13 +76,14 @@ The workspace root crate (`bare-metal-evm`) re-exports everything for convenienc
 
 > Released 2026-06-01. Closes [#10](https://github.com/LusterSourav/how_to_make_evm_from_scratch_in_rust_by_love/issues/10), [PR #15](https://github.com/LusterSourav/how_to_make_evm_from_scratch_in_rust_by_love/pull/15).
 
-Six crates that build Ethereum's World State (σ): an address-keyed MPT
-that commits to nonce, balance, code, and per-account storage, with a
-journal for checkpoint/rollback.
+Seven crates that implement Ethereum's World State (σ): an address-keyed MPT
+over nonce, balance, code hash, and per-account storage, with a
+journal for checkpoint and rollback.
 
 ### Crates in this release
 
 - `bare-metal-evm-types`  — U256, U512
+- `bare-metal-evm-gas`    — EVM gas metering
 - `bare-metal-evm-keccak` — Keccak-256
 - `bare-metal-evm-nibble` — u4 nibbles + HP encoding
 - `bare-metal-evm-rlp`    — RLP encode/decode
@@ -95,9 +96,9 @@ All `#![no_std]`, `#![deny(unsafe_code)]`, zero external deps.
 
 | | |
 |---|---|
-| Tests | 469 |
+| Tests | 488 |
 | Lines (src, ex. lib.rs) | 10,037 |
-| Crates | 7 |
+| Crates | 8 |
 
 `cargo test --workspace` and `cargo clippy -- -D warnings` both clean.
 
@@ -109,7 +110,7 @@ All `#![no_std]`, `#![deny(unsafe_code)]`, zero external deps.
 - Trie root preserved on DB error
 - `set_code(addr, code)` now hashes for you
 - Typed `NibbleError` replaces `Result<(), ()>` in nibble ops
-- Keccak-256 XOR block bounds: `debug_assert` → `assert`
+- Keccak-256 XOR block bounds: `debug_assert` turned to `assert`
 - Removed dead public API (`drain`, `split_first`, `split_at`)
 - **New crate: `bare-metal-evm-gas`** — full gas metering (intrinsic, memory, access sets, SSTORE truth table, CALL 63/64, initcode, precompile costs, EIP-7623)
 
@@ -118,6 +119,7 @@ All `#![no_std]`, `#![deny(unsafe_code)]`, zero external deps.
 ```toml
 [dependencies]
 bare-metal-evm-types  = "0.2.0"
+bare-metal-evm-gas    = "0.2.0"
 bare-metal-evm-keccak = "0.2.0"
 bare-metal-evm-nibble = "0.2.0"
 bare-metal-evm-rlp    = "0.2.0"
@@ -129,6 +131,7 @@ bare-metal-evm-state  = "0.2.0"
 
 ```bash
 docker pull ghcr.io/lustersourav/how_to_make_evm_from_scratch_in_rust_by_love/bare-metal-evm-types:0.2.0
+docker pull ghcr.io/lustersourav/how_to_make_evm_from_scratch_in_rust_by_love/bare-metal-evm-gas:0.2.0
 # ... 5 more, one per crate
 ```
 
