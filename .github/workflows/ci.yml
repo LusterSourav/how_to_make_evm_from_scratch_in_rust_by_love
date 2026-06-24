@@ -48,6 +48,8 @@ jobs:
         run: cargo publish -p bare-metal-evm-trie --registry crates-io --dry-run --allow-dirty
       - name: cargo publish --dry-run (state)
         run: cargo publish -p bare-metal-evm-state --registry crates-io --dry-run --allow-dirty
+      - name: cargo publish --dry-run (gas)
+        run: cargo publish -p bare-metal-evm-gas --registry crates-io --dry-run --allow-dirty
 
   publish:
     name: Publish to crates.io and GitHub Packages
@@ -72,6 +74,7 @@ jobs:
           cargo publish -p bare-metal-evm-rlp    --registry crates-io --token "$CARGO_TOKEN"
           cargo publish -p bare-metal-evm-trie   --registry crates-io --token "$CARGO_TOKEN"
           cargo publish -p bare-metal-evm-state  --registry crates-io --token "$CARGO_TOKEN"
+          cargo publish -p bare-metal-evm-gas    --registry crates-io --token "$CARGO_TOKEN"
         env:
           CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
 
@@ -84,5 +87,6 @@ jobs:
           cargo publish -p bare-metal-evm-rlp    --registry github
           cargo publish -p bare-metal-evm-trie   --registry github
           cargo publish -p bare-metal-evm-state  --registry github
+          cargo publish -p bare-metal-evm-gas    --registry github
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN }}

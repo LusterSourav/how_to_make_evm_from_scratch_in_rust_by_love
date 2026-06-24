@@ -10,21 +10,21 @@ use bare_metal_evm::{
 fn main() -> Result<(), RlpError> {
     // --- String encoding ---
     let encoded = encode_str(b"dog");
-    println!("1. 'dog' encoded: {:02x?}", encoded);
+    println!("1. 'dog' encoded: {encoded:02x?}");
     let decoded = decode(&encoded)?;
     assert_eq!(decoded, RlpItem::Str(b"dog"));
     if let RlpItem::Str(s) = &decoded {
-        println!("   Decoded: {:?}", s);
+        println!("   Decoded: {s:?}");
     }
 
     // --- U256 encoding ---
     let val = U256::from_u64(0x0100);
     let encoded = encode_u256(&val);
-    println!("2. U256(0x0100) encoded: {:02x?}", encoded);
+    println!("2. U256(0x0100) encoded: {encoded:02x?}");
     let decoded = decode(&encoded)?;
     // decode doesn't interpret as U256 — compare raw bytes
     if let RlpItem::Str(bytes) = &decoded {
-        println!("   Decoded bytes: {:02x?}", bytes);
+        println!("   Decoded bytes: {bytes:02x?}");
     }
 
     // --- List encoding ---
@@ -32,7 +32,7 @@ fn main() -> Result<(), RlpError> {
     let dog = encode_str(b"dog");
     let items: [&[u8]; 2] = [&cat, &dog];
     let list = encode_list(&items);
-    println!("3. ['cat', 'dog'] list: {:02x?}", list);
+    println!("3. ['cat', 'dog'] list: {list:02x?}");
     let decoded = decode(&list)?;
     if let RlpItem::List(inner) = &decoded {
         assert_eq!(inner.len(), 2);
@@ -43,7 +43,7 @@ fn main() -> Result<(), RlpError> {
 
     // --- Empty string ---
     let empty = encode_str(b"");
-    println!("4. Empty string: {:02x?}", empty);
+    println!("4. Empty string: {empty:02x?}");
     let decoded = decode(&empty)?;
     assert_eq!(decoded, RlpItem::Str(b""));
     println!("   Decoded empty string");
@@ -52,7 +52,7 @@ fn main() -> Result<(), RlpError> {
     let inner_encoded = encode_str(b"a");
     let inner_list = encode_list(&[&inner_encoded]);
     let outer_list = encode_list(&[&inner_list]);
-    println!("5. Nested [['a']]: {:02x?}", outer_list);
+    println!("5. Nested [['a']]: {outer_list:02x?}");
     let decoded = decode(&outer_list)?;
     if let RlpItem::List(outer) = &decoded {
         if let RlpItem::List(inner) = &outer[0] {

@@ -57,7 +57,7 @@ and `CARGO_PUBLISH_TOKEN` for the git-based registry step.
 cargo test --workspace
 cargo clippy --workspace --all-features -- -D warnings
 
-# Bump the version in all 6 Cargo.toml files plus the root Cargo.toml
+# Bump the version in all 7 Cargo.toml files plus the root Cargo.toml
 # Update CHANGELOG.md with a new entry
 git add -A
 git commit -m "chore: bump version to X.Y.Z"
@@ -68,7 +68,7 @@ git push origin main --tags
 ```
 
 The `publish` job in CI fires automatically on `v*` tags. It
-publishes all 6 crates to both registries in dependency order.
+publishes all 7 crates to both registries in dependency order.
 
 ## Order of publishing
 
@@ -79,6 +79,7 @@ publishes all 6 crates to both registries in dependency order.
 4. bare-metal-evm-rlp     (depends on types)
 5. bare-metal-evm-trie    (depends on keccak, nibble, rlp)
 6. bare-metal-evm-state   (depends on types, keccak, rlp, trie)
+7. bare-metal-evm-gas     (depends on types only)
 ```
 
 ## Known limitation: GitHub Releases PUT
@@ -118,6 +119,7 @@ cargo login --registry github    # token: a GitHub PAT with `repo` scope
 ./scripts/publish-to-github.sh bare-metal-evm-rlp
 ./scripts/publish-to-github.sh bare-metal-evm-trie
 ./scripts/publish-to-github.sh bare-metal-evm-state
+./scripts/publish-to-github.sh bare-metal-evm-gas
 ```
 
 `scripts/publish-to-github.sh` does, for the given crate:
