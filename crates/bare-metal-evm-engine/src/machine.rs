@@ -69,7 +69,8 @@ pub fn execute(code: &[u8], gas: GasMeter) -> Result<u64, Error> {
 
             op @ opcodes::PUSH1..=opcodes::PUSH32 => {
                 let n = (op - opcodes::PUSH1 + 1) as usize;
-                state.pc = opcodes::op_push(&mut state.stack, &mut state.gas, &state.code, state.pc, n)?;
+                state.pc =
+                    opcodes::op_push(&mut state.stack, &mut state.gas, &state.code, state.pc, n)?;
                 continue; // pc already advanced past immediate data
             }
 

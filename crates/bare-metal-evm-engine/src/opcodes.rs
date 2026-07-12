@@ -66,7 +66,11 @@ pub(crate) fn op_div(stack: &mut Stack, gas: &mut GasMeter) -> Result<(), Error>
     gas.charge(5).map_err(|_| Error::OutOfGas)?;
     let b = stack.pop()?;
     let a = stack.pop()?;
-    let q = if b.is_zero() { U256::zero() } else { a.div_rem(b).0 };
+    let q = if b.is_zero() {
+        U256::zero()
+    } else {
+        a.div_rem(b).0
+    };
     stack.push(q)
 }
 
@@ -81,7 +85,11 @@ pub(crate) fn op_mod(stack: &mut Stack, gas: &mut GasMeter) -> Result<(), Error>
     gas.charge(5).map_err(|_| Error::OutOfGas)?;
     let b = stack.pop()?;
     let a = stack.pop()?;
-    let r = if b.is_zero() { U256::zero() } else { a.div_rem(b).1 };
+    let r = if b.is_zero() {
+        U256::zero()
+    } else {
+        a.div_rem(b).1
+    };
     stack.push(r)
 }
 
@@ -115,7 +123,8 @@ pub(crate) fn op_mulmod(stack: &mut Stack, gas: &mut GasMeter) -> Result<(), Err
 pub(crate) fn op_exp(stack: &mut Stack, gas: &mut GasMeter) -> Result<(), Error> {
     let base = stack.pop()?;
     let exponent = stack.pop()?;
-    let cost = bare_metal_evm_gas::exp::exp_gas(&exponent.to_bytes_be()).map_err(|_| Error::OutOfGas)?;
+    let cost =
+        bare_metal_evm_gas::exp::exp_gas(&exponent.to_bytes_be()).map_err(|_| Error::OutOfGas)?;
     gas.charge(cost).map_err(|_| Error::OutOfGas)?;
     stack.push(base.exp(exponent))
 }
@@ -140,14 +149,22 @@ pub(crate) fn op_slt(stack: &mut Stack, gas: &mut GasMeter) -> Result<(), Error>
     gas.charge(3).map_err(|_| Error::OutOfGas)?;
     let b = stack.pop()?;
     let a = stack.pop()?;
-    stack.push(if signed_lt(a, b) { U256::one() } else { U256::zero() })
+    stack.push(if signed_lt(a, b) {
+        U256::one()
+    } else {
+        U256::zero()
+    })
 }
 
 pub(crate) fn op_sgt(stack: &mut Stack, gas: &mut GasMeter) -> Result<(), Error> {
     gas.charge(3).map_err(|_| Error::OutOfGas)?;
     let b = stack.pop()?;
     let a = stack.pop()?;
-    stack.push(if signed_gt(a, b) { U256::one() } else { U256::zero() })
+    stack.push(if signed_gt(a, b) {
+        U256::one()
+    } else {
+        U256::zero()
+    })
 }
 
 pub(crate) fn op_eq(stack: &mut Stack, gas: &mut GasMeter) -> Result<(), Error> {
@@ -160,7 +177,11 @@ pub(crate) fn op_eq(stack: &mut Stack, gas: &mut GasMeter) -> Result<(), Error> 
 pub(crate) fn op_iszero(stack: &mut Stack, gas: &mut GasMeter) -> Result<(), Error> {
     gas.charge(3).map_err(|_| Error::OutOfGas)?;
     let a = stack.pop()?;
-    stack.push(if a.is_zero() { U256::one() } else { U256::zero() })
+    stack.push(if a.is_zero() {
+        U256::one()
+    } else {
+        U256::zero()
+    })
 }
 
 // ── Bitwise handlers ────────────────────────────────────────────────
@@ -236,7 +257,11 @@ pub(crate) fn op_sar(stack: &mut Stack, gas: &mut GasMeter) -> Result<(), Error>
     let shift = stack.pop()?;
     let value = stack.pop()?;
     let result = if shift >= U256::from_u64(256) {
-        if value.is_negative() { U256_MAX } else { U256::zero() }
+        if value.is_negative() {
+            U256_MAX
+        } else {
+            U256::zero()
+        }
     } else {
         let s = shift.low_u64() as u32;
         let mut result = value.wrapping_shr(s);

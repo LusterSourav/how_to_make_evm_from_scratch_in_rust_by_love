@@ -1,5 +1,5 @@
-use core::fmt;
 use bare_metal_evm_types::U256;
+use core::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
