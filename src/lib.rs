@@ -72,6 +72,11 @@ pub use bare_metal_evm_gas::{
     AccessListItem, GasError, GasMeter,
 };
 
+// --- Execution Engine (Layer 4) ---
+pub use bare_metal_evm_engine::{
+    execute, Error as EngineError, MachineState, Memory, Stack,
+};
+
 // Reserved for future use: arithmetic extension
 // U512, U256_MAX — extended arithmetic for EVM operations that need
 // larger intermediate results (e.g. MUL, ADD with overflow detection).

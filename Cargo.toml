@@ -8,6 +8,7 @@ members = [
     "crates/bare-metal-evm-trie",
     "crates/bare-metal-evm-state",
     "crates/bare-metal-evm-gas",
+    "crates/bare-metal-evm-engine",
 ]
 
 [workspace.package]
@@ -25,6 +26,7 @@ bare-metal-evm-rlp = { path = "crates/bare-metal-evm-rlp", version = "0.3.0" }
 bare-metal-evm-trie = { path = "crates/bare-metal-evm-trie", version = "0.3.0" }
 bare-metal-evm-state = { path = "crates/bare-metal-evm-state", version = "0.3.0" }
 bare-metal-evm-gas = { path = "crates/bare-metal-evm-gas", version = "0.3.0" }
+bare-metal-evm-engine = { path = "crates/bare-metal-evm-engine", version = "0.3.0" }
 
 [package]
 name = "bare-metal-evm"
@@ -45,6 +47,7 @@ bare-metal-evm-nibble = { path = "crates/bare-metal-evm-nibble", version = "0.3.
 bare-metal-evm-trie = { path = "crates/bare-metal-evm-trie", version = "0.3.0" }
 bare-metal-evm-state = { path = "crates/bare-metal-evm-state", version = "0.3.0" }
 bare-metal-evm-gas = { path = "crates/bare-metal-evm-gas", version = "0.3.0" }
+bare-metal-evm-engine = { path = "crates/bare-metal-evm-engine", version = "0.3.0" }
 
 [dev-dependencies]
 hex.workspace = true
@@ -62,3 +65,4 @@ bare-metal-evm-rlp = { path = "crates/bare-metal-evm-rlp" }
 bare-metal-evm-trie = { path = "crates/bare-metal-evm-trie" }
 bare-metal-evm-state = { path = "crates/bare-metal-evm-state" }
 bare-metal-evm-gas = { path = "crates/bare-metal-evm-gas" }
+bare-metal-evm-engine = { path = "crates/bare-metal-evm-engine" }
