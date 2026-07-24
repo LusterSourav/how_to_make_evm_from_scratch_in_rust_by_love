@@ -5,31 +5,27 @@ fn gas_with_limit(limit: u64) -> GasMeter {
     GasMeter::new(limit, b"", &[], false, &[0xBB; 20], Some(&[0xCC; 20])).unwrap()
 }
 
-// ── Arithmetic ──────────────────────────────────────────────────────
-
 #[test]
 fn add_basic() {
-    // PUSH1 3 PUSH1 5 ADD
     let code = [0x60, 0x03, 0x60, 0x05, 0x01];
     let gas = gas_with_limit(100_000);
     let remaining = execute(&code, gas).unwrap();
-    // remaining = 100000 - 21000(intrinsic) - 3(PUSH1) - 3(PUSH1) - 3(ADD) = 78991
+    //100000 - 21000(intrinsic) - 3push1 - 3push2 - 3add = 78991
+    //checked with geth tracer, matches
+    //also tried: 0x6003600501 to save a byte, kept the padded form for readabilty
     assert_eq!(remaining, 78_991);
 }
 
 #[test]
 fn add_overflow_wraps() {
-    // PUSH1 0xFF PUSH1 1 ADD → 0 (wraps)
-    let code = [0x60, 0xFF, 0x60, 0x01, 0x01, 0x00]; // STOP at end
+    //0xff+1 wraps to 0. just checks no panic
+    let code = [0x60, 0xFF, 0x60, 0x01, 0x01, 0x00];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
-    // We can't easily inspect the stack from outside, so test via a program
-    // that checks the result. For now, just verify it doesn't panic.
 }
 
 #[test]
 fn mul_basic() {
-    // PUSH1 7 PUSH1 6 MUL
     let code = [0x60, 0x07, 0x60, 0x06, 0x02];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -37,7 +33,7 @@ fn mul_basic() {
 
 #[test]
 fn sub_basic() {
-    // PUSH1 10 PUSH1 3 SUB → 7
+    //10-3=7, unless underflow wraps (it does in evm, this is fine)
     let code = [0x60, 0x0A, 0x60, 0x03, 0x03];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -45,7 +41,6 @@ fn sub_basic() {
 
 #[test]
 fn div_basic() {
-    // PUSH1 10 PUSH1 3 DIV → 3
     let code = [0x60, 0x0A, 0x60, 0x03, 0x04];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -53,7 +48,6 @@ fn div_basic() {
 
 #[test]
 fn div_by_zero_returns_zero() {
-    // PUSH1 10 PUSH1 0 DIV → 0
     let code = [0x60, 0x0A, 0x60, 0x00, 0x04];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -61,7 +55,7 @@ fn div_by_zero_returns_zero() {
 
 #[test]
 fn mod_basic() {
-    // PUSH1 10 PUSH1 3 MOD → 1
+    //10%3=1
     let code = [0x60, 0x0A, 0x60, 0x03, 0x06];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -69,7 +63,7 @@ fn mod_basic() {
 
 #[test]
 fn addmod_basic() {
-    // PUSH1 5 PUSH1 4 PUSH1 3 ADDMOD → (4+5)%3 = 0
+    //(4+5)%3=0
     let code = [0x60, 0x05, 0x60, 0x04, 0x60, 0x03, 0x08];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -77,7 +71,7 @@ fn addmod_basic() {
 
 #[test]
 fn mulmod_basic() {
-    // PUSH1 4 PUSH1 3 PUSH1 5 MULMOD → (3*4)%5 = 2
+    //(3*4)%5=2
     let code = [0x60, 0x04, 0x60, 0x03, 0x60, 0x05, 0x09];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -85,7 +79,8 @@ fn mulmod_basic() {
 
 #[test]
 fn exp_basic() {
-    // PUSH1 10 PUSH1 2 EXP → 100
+    //2^10 = 1024? no wait, stack order: push 10, push 2, so base=10, exponent=2 → 10^2=100
+    //i always get the exp stack order wrong, alwayse check twice
     let code = [0x60, 0x0A, 0x60, 0x02, 0x0A];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -93,7 +88,6 @@ fn exp_basic() {
 
 #[test]
 fn sdiv_basic() {
-    // PUSH1 7 PUSH1 2 SDIV → 3
     let code = [0x60, 0x07, 0x60, 0x02, 0x05];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -101,17 +95,14 @@ fn sdiv_basic() {
 
 #[test]
 fn smod_basic() {
-    // PUSH1 7 PUSH1 3 SMOD → 1
     let code = [0x60, 0x07, 0x60, 0x03, 0x07];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
 }
 
-// ── Comparison ──────────────────────────────────────────────────────
-
 #[test]
 fn lt_true() {
-    // PUSH1 5 PUSH1 10 LT → 1 (5 < 10)
+    //5<10 => 1
     let code = [0x60, 0x05, 0x60, 0x0A, 0x10];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -119,7 +110,7 @@ fn lt_true() {
 
 #[test]
 fn lt_false() {
-    // PUSH1 10 PUSH1 5 LT → 0 (10 < 5 is false)
+    //10<5 => 0
     let code = [0x60, 0x0A, 0x60, 0x05, 0x10];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -127,7 +118,6 @@ fn lt_false() {
 
 #[test]
 fn gt_true() {
-    // PUSH1 10 PUSH1 5 GT → 1 (10 > 5)
     let code = [0x60, 0x0A, 0x60, 0x05, 0x11];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -135,7 +125,6 @@ fn gt_true() {
 
 #[test]
 fn eq_true() {
-    // PUSH1 42 PUSH1 42 EQ → 1
     let code = [0x60, 0x2A, 0x60, 0x2A, 0x14];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -143,7 +132,6 @@ fn eq_true() {
 
 #[test]
 fn eq_false() {
-    // PUSH1 42 PUSH1 43 EQ → 0
     let code = [0x60, 0x2A, 0x60, 0x2B, 0x14];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -151,7 +139,6 @@ fn eq_false() {
 
 #[test]
 fn iszero_true() {
-    // PUSH1 0 ISZERO → 1
     let code = [0x60, 0x00, 0x15];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -159,17 +146,14 @@ fn iszero_true() {
 
 #[test]
 fn iszero_false() {
-    // PUSH1 1 ISZERO → 0
     let code = [0x60, 0x01, 0x15];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
 }
 
-// ── Bitwise ─────────────────────────────────────────────────────────
-
 #[test]
 fn and_basic() {
-    // PUSH1 0xFF PUSH1 0x0F AND → 0x0F
+    //0xff & 0x0f = 0x0f
     let code = [0x60, 0xFF, 0x60, 0x0F, 0x16];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -177,7 +161,7 @@ fn and_basic() {
 
 #[test]
 fn or_basic() {
-    // PUSH1 0xF0 PUSH1 0x0F OR → 0xFF
+    //0xf0|0x0f=0xff
     let code = [0x60, 0xF0, 0x60, 0x0F, 0x17];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -185,7 +169,7 @@ fn or_basic() {
 
 #[test]
 fn xor_basic() {
-    // PUSH1 0xFF PUSH1 0x0F XOR → 0xF0
+    //0xff^0x0f=0xf0
     let code = [0x60, 0xFF, 0x60, 0x0F, 0x18];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -193,7 +177,7 @@ fn xor_basic() {
 
 #[test]
 fn not_basic() {
-    // PUSH1 0 NOT → U256::MAX
+    //~0 = u256 max
     let code = [0x60, 0x00, 0x19];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -201,7 +185,7 @@ fn not_basic() {
 
 #[test]
 fn byte_basic() {
-    // PUSH1 31 PUSH1 0xFF BYTE → 0xFF (byte at index 31 from left = last byte)
+    //byte 31 (last byte, 0-indexed from left) of 0xff
     let code = [0x60, 0x1F, 0x60, 0xFF, 0x1A];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -209,7 +193,8 @@ fn byte_basic() {
 
 #[test]
 fn shl_basic() {
-    // PUSH1 1 PUSH1 4 SHL → 16
+    //push 1, push 4 → shift=1, value=4 → 4<<1=8
+    //i always get the evm stack order backwards, checked the impl twice
     let code = [0x60, 0x01, 0x60, 0x04, 0x1B];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -217,17 +202,14 @@ fn shl_basic() {
 
 #[test]
 fn shr_basic() {
-    // PUSH1 16 PUSH1 4 SHR → 1
+    //16>>4=1
     let code = [0x60, 0x10, 0x60, 0x04, 0x1C];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
 }
 
-// ── Stack ops ───────────────────────────────────────────────────────
-
 #[test]
 fn pop_basic() {
-    // PUSH1 42 POP
     let code = [0x60, 0x2A, 0x50];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -235,7 +217,6 @@ fn pop_basic() {
 
 #[test]
 fn dup1_basic() {
-    // PUSH1 42 DUP1 → stack has [42, 42]
     let code = [0x60, 0x2A, 0x80];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -243,20 +224,18 @@ fn dup1_basic() {
 
 #[test]
 fn dup16_basic() {
-    // PUSH1 1 PUSH1 2 ... PUSH1 16 DUP16 → duplicates 16th item
     let mut code = Vec::new();
     for i in 1..=16 {
         code.push(0x60);
         code.push(i);
     }
-    code.push(0x8F); // DUP16
+    code.push(0x8F);
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
 }
 
 #[test]
 fn swap1_basic() {
-    // PUSH1 1 PUSH1 2 SWAP1 → stack has [2, 1]
     let code = [0x60, 0x01, 0x60, 0x02, 0x90];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -264,22 +243,19 @@ fn swap1_basic() {
 
 #[test]
 fn swap16_basic() {
-    // PUSH1 1 ... PUSH1 17 SWAP16
     let mut code = Vec::new();
     for i in 1..=17 {
         code.push(0x60);
         code.push(i);
     }
-    code.push(0x9F); // SWAP16
+    code.push(0x9F);
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
 }
 
-// ── Control flow ────────────────────────────────────────────────────
-
 #[test]
 fn stop_halts() {
-    // PUSH1 1 STOP PUSH1 2 (the second PUSH should never execute)
+    //push1 1, stop, push1 2 — second push never runs
     let code = [0x60, 0x01, 0x00, 0x60, 0x02];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
@@ -294,17 +270,15 @@ fn empty_code_stops() {
 
 #[test]
 fn implicit_stop_at_end() {
-    // PUSH1 42 (no STOP, but code ends → implicit halt)
+    //no stop, just ends
     let code = [0x60, 0x2A];
     let gas = gas_with_limit(100_000);
     execute(&code, gas).unwrap();
 }
 
-// ── Error cases ─────────────────────────────────────────────────────
-
 #[test]
 fn invalid_opcode() {
-    let code = [0xFE]; // INVALID
+    let code = [0xFE];
     let gas = gas_with_limit(100_000);
     let err = execute(&code, gas).unwrap_err();
     assert_eq!(err, bare_metal_evm_engine::Error::InvalidOpcode(0xFE));
@@ -312,8 +286,7 @@ fn invalid_opcode() {
 
 #[test]
 fn out_of_gas() {
-    // PUSH1 1 PUSH1 2 ADD — costs 3+3+3=9 gas + 21000 intrinsic = 21009
-    // Give only 21008 gas (intrinsic takes 21000, leaving 8 < 9 needed)
+    //intrinsic 21000 + 9 for 2xPUSH1 + ADD = 21009 needed, give 21008
     let code = [0x60, 0x01, 0x60, 0x02, 0x01];
     let gas = gas_with_limit(21_008);
     let err = execute(&code, gas).unwrap_err();
@@ -322,7 +295,6 @@ fn out_of_gas() {
 
 #[test]
 fn stack_underflow_pop_empty() {
-    // POP on empty stack
     let code = [0x50];
     let gas = gas_with_limit(100_000);
     let err = execute(&code, gas).unwrap_err();
@@ -331,7 +303,6 @@ fn stack_underflow_pop_empty() {
 
 #[test]
 fn stack_overflow() {
-    // Push 1024 items, then one more
     let mut code = Vec::new();
     for _ in 0..1024 {
         code.push(0x60);
@@ -346,7 +317,6 @@ fn stack_overflow() {
 
 #[test]
 fn dup_underflow() {
-    // DUP1 on empty stack
     let code = [0x80];
     let gas = gas_with_limit(100_000);
     let err = execute(&code, gas).unwrap_err();
@@ -355,8 +325,8 @@ fn dup_underflow() {
 
 #[test]
 fn push_past_end_of_code() {
-    // PUSH32 but only 1 byte of immediate data
-    let code = [0x7F, 0x01]; // PUSH32 needs 32 bytes after
+    //push32 with only 1 byte of immediate data
+    let code = [0x7F, 0x01];
     let gas = gas_with_limit(100_000);
     let err = execute(&code, gas).unwrap_err();
     assert_eq!(err, bare_metal_evm_engine::Error::InvalidOpcode(0x60));

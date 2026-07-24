@@ -14,9 +14,12 @@ pub struct MachineState {
     pub code: Vec<u8>,
 }
 
-/// Execute bytecode with the given gas meter. Returns remaining gas on normal halt.
+///run bytecode, returns leftover gas on halt
+//TODO: check gas limit before entering the loop (zero-limit edge case)
+//TODO: jumptable dispatch if match overhead becomes a problem
+//used a recursive descent parser for the first draft, the loop is simpler to trace
 pub fn execute(code: &[u8], gas: GasMeter) -> Result<u64, Error> {
-    let mut state = MachineState {
+    let mut st = MachineState {
         stack: Stack::new(),
         memory: Memory::new(),
         pc: 0,
@@ -25,68 +28,64 @@ pub fn execute(code: &[u8], gas: GasMeter) -> Result<u64, Error> {
     };
 
     loop {
-        if state.pc >= state.code.len() {
-            return Ok(state.gas.remaining());
+        if st.pc >= st.code.len() {
+            //ran out of code = implict halt
+            return Ok(st.gas.remaining());
         }
 
-        let opcode = state.code[state.pc];
+        let op = st.code[st.pc];
 
-        match opcode {
-            opcodes::STOP => return Ok(state.gas.remaining()),
+        //consider a lookup table here if this match gets slow
+        match op {
+            opcodes::STOP => return Ok(st.gas.remaining()),
 
-            // ── Arithmetic ──
-            opcodes::ADD => opcodes::op_add(&mut state.stack, &mut state.gas)?,
-            opcodes::MUL => opcodes::op_mul(&mut state.stack, &mut state.gas)?,
-            opcodes::SUB => opcodes::op_sub(&mut state.stack, &mut state.gas)?,
-            opcodes::DIV => opcodes::op_div(&mut state.stack, &mut state.gas)?,
-            opcodes::SDIV => opcodes::op_sdiv(&mut state.stack, &mut state.gas)?,
-            opcodes::MOD => opcodes::op_mod(&mut state.stack, &mut state.gas)?,
-            opcodes::SMOD => opcodes::op_smod(&mut state.stack, &mut state.gas)?,
-            opcodes::ADDMOD => opcodes::op_addmod(&mut state.stack, &mut state.gas)?,
-            opcodes::MULMOD => opcodes::op_mulmod(&mut state.stack, &mut state.gas)?,
-            opcodes::EXP => opcodes::op_exp(&mut state.stack, &mut state.gas)?,
+            opcodes::ADD => opcodes::op_add(&mut st.stack, &mut st.gas)?,
+            opcodes::MUL => opcodes::op_mul(&mut st.stack, &mut st.gas)?,
+            opcodes::SUB => opcodes::op_sub(&mut st.stack, &mut st.gas)?,
+            opcodes::DIV => opcodes::op_div(&mut st.stack, &mut st.gas)?,
+            opcodes::SDIV => opcodes::op_sdiv(&mut st.stack, &mut st.gas)?,
+            opcodes::MOD => opcodes::op_mod(&mut st.stack, &mut st.gas)?,
+            opcodes::SMOD => opcodes::op_smod(&mut st.stack, &mut st.gas)?,
+            opcodes::ADDMOD => opcodes::op_addmod(&mut st.stack, &mut st.gas)?,
+            opcodes::MULMOD => opcodes::op_mulmod(&mut st.stack, &mut st.gas)?,
+            opcodes::EXP => opcodes::op_exp(&mut st.stack, &mut st.gas)?,
 
-            // ── Comparison ──
-            opcodes::LT => opcodes::op_lt(&mut state.stack, &mut state.gas)?,
-            opcodes::GT => opcodes::op_gt(&mut state.stack, &mut state.gas)?,
-            opcodes::SLT => opcodes::op_slt(&mut state.stack, &mut state.gas)?,
-            opcodes::SGT => opcodes::op_sgt(&mut state.stack, &mut state.gas)?,
-            opcodes::EQ => opcodes::op_eq(&mut state.stack, &mut state.gas)?,
-            opcodes::ISZERO => opcodes::op_iszero(&mut state.stack, &mut state.gas)?,
+            opcodes::LT => opcodes::op_lt(&mut st.stack, &mut st.gas)?,
+            opcodes::GT => opcodes::op_gt(&mut st.stack, &mut st.gas)?,
+            opcodes::SLT => opcodes::op_slt(&mut st.stack, &mut st.gas)?,
+            opcodes::SGT => opcodes::op_sgt(&mut st.stack, &mut st.gas)?,
+            opcodes::EQ => opcodes::op_eq(&mut st.stack, &mut st.gas)?,
+            opcodes::ISZERO => opcodes::op_iszero(&mut st.stack, &mut st.gas)?,
+            opcodes::AND => opcodes::op_and(&mut st.stack, &mut st.gas)?,
+            opcodes::OR => opcodes::op_or(&mut st.stack, &mut st.gas)?,
+            opcodes::XOR => opcodes::op_xor(&mut st.stack, &mut st.gas)?,
+            opcodes::NOT => opcodes::op_not(&mut st.stack, &mut st.gas)?,
+            opcodes::BYTE => opcodes::op_byte(&mut st.stack, &mut st.gas)?,
+            opcodes::SHL => opcodes::op_shl(&mut st.stack, &mut st.gas)?,
+            opcodes::SHR => opcodes::op_shr(&mut st.stack, &mut st.gas)?,
+            opcodes::SAR => opcodes::op_sar(&mut st.stack, &mut st.gas)?,
 
-            // ── Bitwise ──
-            opcodes::AND => opcodes::op_and(&mut state.stack, &mut state.gas)?,
-            opcodes::OR => opcodes::op_or(&mut state.stack, &mut state.gas)?,
-            opcodes::XOR => opcodes::op_xor(&mut state.stack, &mut state.gas)?,
-            opcodes::NOT => opcodes::op_not(&mut state.stack, &mut state.gas)?,
-            opcodes::BYTE => opcodes::op_byte(&mut state.stack, &mut state.gas)?,
-            opcodes::SHL => opcodes::op_shl(&mut state.stack, &mut state.gas)?,
-            opcodes::SHR => opcodes::op_shr(&mut state.stack, &mut state.gas)?,
-            opcodes::SAR => opcodes::op_sar(&mut state.stack, &mut state.gas)?,
-
-            // ── Stack ──
-            opcodes::POP => opcodes::op_pop(&mut state.stack, &mut state.gas)?,
+            opcodes::POP => opcodes::op_pop(&mut st.stack, &mut st.gas)?,
 
             op @ opcodes::PUSH1..=opcodes::PUSH32 => {
                 let n = (op - opcodes::PUSH1 + 1) as usize;
-                state.pc =
-                    opcodes::op_push(&mut state.stack, &mut state.gas, &state.code, state.pc, n)?;
-                continue; // pc already advanced past immediate data
+                st.pc = opcodes::op_push(&mut st.stack, &mut st.gas, &st.code, st.pc, n)?;
+                continue; //pc already past immediate
             }
 
             op @ opcodes::DUP1..=opcodes::DUP16 => {
                 let n = (op - opcodes::DUP1) as usize;
-                opcodes::op_dup(&mut state.stack, &mut state.gas, n)?;
+                opcodes::op_dup(&mut st.stack, &mut st.gas, n)?;
             }
 
             op @ opcodes::SWAP1..=opcodes::SWAP16 => {
                 let n = (op - opcodes::SWAP1) as usize;
-                opcodes::op_swap(&mut state.stack, &mut state.gas, n)?;
+                opcodes::op_swap(&mut st.stack, &mut st.gas, n)?;
             }
 
-            _ => return Err(Error::InvalidOpcode(opcode)),
+            _ => return Err(Error::InvalidOpcode(op)),
         }
 
-        state.pc += 1;
+        st.pc += 1;
     }
 }

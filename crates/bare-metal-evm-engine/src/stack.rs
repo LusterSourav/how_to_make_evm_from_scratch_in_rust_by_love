@@ -23,11 +23,12 @@ impl Stack {
         }
     }
 
-    pub fn push(&mut self, value: U256) -> Result<(), Error> {
+    pub fn push(&mut self, v: U256) -> Result<(), Error> {
         if self.len >= MAX_DEPTH {
             return Err(Error::StackOverflow);
         }
-        self.data[self.len] = value;
+        //debug_assert!(self.data[self.len].is_zero()); //tried zeroing after push, not needed
+        self.data[self.len] = v;
         self.len += 1;
         Ok(())
     }
@@ -47,16 +48,18 @@ impl Stack {
         Ok(self.data[self.len - 1])
     }
 
-    /// Duplicate the i-th item from the top (0-indexed: dup(0) = DUP1).
+    //dup(n) duplicates item n from the top: DUP1=dup(0), DUP2=dup(1)
+    //TODO: dup(1023) on full stack hits stackoverflow via push, not underflow
     pub fn dup(&mut self, i: usize) -> Result<(), Error> {
         if i >= self.len {
             return Err(Error::StackUnderflow);
         }
-        let value = self.data[self.len - 1 - i];
-        self.push(value)
+        let v = self.data[self.len - 1 - i];
+        self.push(v)
     }
 
-    /// Swap the top item with the (n+1)-th item (0-indexed: swap(0) = SWAP1).
+    //swap(n) exxchanges top with item n+1 down: SWAP1=swap(0), SWAP2=swap(1)
+    //TODO: fix the single-past underflow edge on swap with n > len-2
     pub fn swap(&mut self, n: usize) -> Result<(), Error> {
         let top_idx = self.len - 1;
         let other_idx = self.len - 2 - n;
@@ -109,9 +112,9 @@ mod tests {
         let mut stack = Stack::new();
         stack.push(U256::from_u64(10)).unwrap();
         stack.push(U256::from_u64(20)).unwrap();
-        stack.dup(0).unwrap(); // DUP1: duplicate top
+        stack.dup(0).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from_u64(20));
-        stack.dup(1).unwrap(); // DUP2: duplicate second
+        stack.dup(1).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from_u64(10));
     }
 
@@ -121,7 +124,7 @@ mod tests {
         stack.push(U256::from_u64(1)).unwrap();
         stack.push(U256::from_u64(2)).unwrap();
         stack.push(U256::from_u64(3)).unwrap();
-        stack.swap(0).unwrap(); // SWAP1: swap top two
+        stack.swap(0).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from_u64(2));
         assert_eq!(stack.pop().unwrap(), U256::from_u64(3));
         assert_eq!(stack.pop().unwrap(), U256::from_u64(1));

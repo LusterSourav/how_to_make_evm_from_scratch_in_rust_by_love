@@ -19,10 +19,13 @@ impl Memory {
         self.data.len()
     }
 
-    /// Number of 32-byte words (rounded up).
+    ///32-byte words, rounded up. used for memory gas calculations.
+    //div_ceil is the right tool here, avoids manual rounding
     pub fn words(&self) -> usize {
         self.data.len().div_ceil(32)
     }
 
-    // ponytail: read/write/resize added when MLOAD/MSTORE opcodes land (Phase 4.2)
+    //read/write/resize land later with MLOAD/MSTORE in phase 4.2
+    //tried storing size as a separate field, worked but added complexity for no gain
+    //also tried a page-based layout (64 byte pages) but it was premature
 }
